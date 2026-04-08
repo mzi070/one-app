@@ -42,7 +42,7 @@ export default function Dashboard() {
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       {/* Welcome */}
-      <div className="bg-gradient-to-r from-blue-600 to-purple-700 rounded-2xl p-6 text-white">
+      <div className="bg-linear-to-r from-blue-600 to-purple-700 rounded-2xl p-6 text-white">
         <h1 className="text-2xl font-bold">Welcome to OneApp</h1>
         <p className="text-blue-100 mt-1">
           Your all-in-one business management platform. Manage sales, HR, accounting, and documents from one place.
@@ -82,7 +82,7 @@ export default function Dashboard() {
                 onClick={() => setModule(link.module)}
                 className="bg-white rounded-xl border border-gray-200 p-5 text-left hover:shadow-lg transition-all duration-200 group"
               >
-                <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${link.color} flex items-center justify-center mb-3 group-hover:scale-110 transition-transform`}>
+                <div className={`w-12 h-12 rounded-xl bg-linear-to-br ${link.color} flex items-center justify-center mb-3 group-hover:scale-110 transition-transform`}>
                   <Icon size={24} className="text-white" />
                 </div>
                 <h4 className="font-semibold text-gray-900">{link.label}</h4>
