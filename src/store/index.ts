@@ -3,6 +3,26 @@ import { persist } from "zustand/middleware";
 
 export type AppModule = "dashboard" | "pos" | "hr" | "accounting" | "pdf" | "settings" | "profile";
 
+// ─── Auth Store ───────────────────────────────────────────────────────────────
+interface AuthState {
+  isAuthenticated: boolean;
+  userEmail: string;
+  login: (email: string) => void;
+  logout: () => void;
+}
+
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set) => ({
+      isAuthenticated: false,
+      userEmail: "",
+      login: (email) => set({ isAuthenticated: true, userEmail: email }),
+      logout: () => set({ isAuthenticated: false, userEmail: "" }),
+    }),
+    { name: "oneapp-auth" }
+  )
+);
+
 interface AppState {
   currentModule: AppModule;
   sidebarOpen: boolean;
