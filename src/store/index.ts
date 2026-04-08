@@ -1,6 +1,7 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
-export type AppModule = "dashboard" | "pos" | "hr" | "accounting" | "pdf";
+export type AppModule = "dashboard" | "pos" | "hr" | "accounting" | "pdf" | "settings";
 
 interface AppState {
   currentModule: AppModule;
@@ -94,3 +95,83 @@ export const usePOSStore = create<POSState>((set, get) => ({
       0
     ),
 }));
+
+// ─── Settings Store ───────────────────────────────────────────────────────────
+export interface AppSettings {
+  // General
+  businessName: string;
+  businessEmail: string;
+  businessPhone: string;
+  businessAddress: string;
+  currency: string;
+  currencySymbol: string;
+  timezone: string;
+  dateFormat: string;
+  language: string;
+  // POS
+  taxRate: number;
+  defaultPaymentMethod: string;
+  lowStockThreshold: number;
+  receiptHeader: string;
+  receiptFooter: string;
+  // HR
+  workHoursPerDay: number;
+  workDaysPerWeek: number;
+  overtimeMultiplier: number;
+  annualLeaveDays: number;
+  sickLeaveDays: number;
+  // Notifications
+  salesNotifications: boolean;
+  lowStockAlerts: boolean;
+  hrReminders: boolean;
+  accountingAlerts: boolean;
+  // Appearance
+  accentColor: string;
+  compactMode: boolean;
+  sidebarDefaultOpen: boolean;
+}
+
+interface SettingsState extends AppSettings {
+  updateSettings: (settings: Partial<AppSettings>) => void;
+  resetSettings: () => void;
+}
+
+export const defaultSettings: AppSettings = {
+  businessName: "OneApp Business",
+  businessEmail: "info@oneapp.com",
+  businessPhone: "+1 (555) 000-0000",
+  businessAddress: "123 Main Street, City, Country",
+  currency: "USD",
+  currencySymbol: "$",
+  timezone: "UTC",
+  dateFormat: "MM/DD/YYYY",
+  language: "English",
+  taxRate: 10,
+  defaultPaymentMethod: "cash",
+  lowStockThreshold: 10,
+  receiptHeader: "Thank you for shopping with us!",
+  receiptFooter: "Please come again. Returns accepted within 30 days.",
+  workHoursPerDay: 8,
+  workDaysPerWeek: 5,
+  overtimeMultiplier: 1.5,
+  annualLeaveDays: 20,
+  sickLeaveDays: 10,
+  salesNotifications: true,
+  lowStockAlerts: true,
+  hrReminders: true,
+  accountingAlerts: true,
+  accentColor: "blue",
+  compactMode: false,
+  sidebarDefaultOpen: true,
+};
+
+export const useSettingsStore = create<SettingsState>()(
+  persist(
+    (set) => ({
+      ...defaultSettings,
+      updateSettings: (settings) => set((state) => ({ ...state, ...settings })),
+      resetSettings: () => set(defaultSettings),
+    }),
+    { name: "oneapp-settings" }
+  )
+);

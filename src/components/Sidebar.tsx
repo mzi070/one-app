@@ -7,6 +7,7 @@ import {
   Users,
   Calculator,
   FileText,
+  Settings,
   Menu,
   X,
   ChevronRight,
@@ -19,6 +20,10 @@ const modules: { id: AppModule; label: string; icon: React.ElementType; color: s
   { id: "hr", label: "HR Management", icon: Users, color: "text-purple-500" },
   { id: "accounting", label: "Accounting", icon: Calculator, color: "text-orange-500" },
   { id: "pdf", label: "PDF Tools", icon: FileText, color: "text-red-500" },
+];
+
+const bottomModules: { id: AppModule; label: string; icon: React.ElementType; color: string }[] = [
+  { id: "settings", label: "Settings", icon: Settings, color: "text-gray-400" },
 ];
 
 export default function Sidebar() {
@@ -90,12 +95,37 @@ export default function Sidebar() {
           })}
         </nav>
 
-        {/* Footer */}
-        {sidebarOpen && (
-          <div className="p-4 border-t border-gray-700">
-            <p className="text-xs text-gray-500 text-center">OneApp v1.0</p>
-          </div>
-        )}
+        {/* Footer / bottom nav */}
+        <div className="p-2 border-t border-gray-700 space-y-1">
+          {bottomModules.map((mod) => {
+            const Icon = mod.icon;
+            const isActive = currentModule === mod.id;
+            return (
+              <button
+                key={mod.id}
+                onClick={() => setModule(mod.id)}
+                className={cn(
+                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group",
+                  isActive
+                    ? "bg-gray-700/80 text-white"
+                    : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                )}
+                title={!sidebarOpen ? mod.label : undefined}
+              >
+                <Icon
+                  size={20}
+                  className={cn(isActive ? "text-white" : "text-gray-400 group-hover:text-gray-300")}
+                />
+                {sidebarOpen && (
+                  <span className="flex-1 text-left text-sm font-medium">{mod.label}</span>
+                )}
+              </button>
+            );
+          })}
+          {sidebarOpen && (
+            <p className="text-xs text-gray-600 text-center pt-2">OneApp v1.0</p>
+          )}
+        </div>
       </aside>
     </>
   );

@@ -8,6 +8,7 @@ import POSModule from "@/components/modules/POSModule";
 import HRModule from "@/components/modules/HRModule";
 import AccountingModule from "@/components/modules/AccountingModule";
 import PDFToolsModule from "@/components/modules/PDFToolsModule";
+import SettingsModule from "@/components/modules/SettingsModule";
 
 export default function Home() {
   const currentModule = useAppStore((s) => s.currentModule);
@@ -25,6 +26,8 @@ export default function Home() {
         return <AccountingModule />;
       case "pdf":
         return <PDFToolsModule />;
+      case "settings":
+        return <SettingsModule />;
       default:
         return <Dashboard />;
     }

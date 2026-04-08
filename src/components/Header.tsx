@@ -9,10 +9,11 @@ const moduleTitles: Record<string, string> = {
   hr: "HR Management",
   accounting: "Accounting",
   pdf: "PDF Tools",
+  settings: "Settings",
 };
 
 export default function Header() {
-  const { currentModule, toggleSidebar } = useAppStore();
+  const { currentModule, toggleSidebar, setModule } = useAppStore();
 
   return (
     <header className="sticky top-0 z-30 bg-white border-b border-gray-200 px-4 py-3">
@@ -36,7 +37,11 @@ export default function Header() {
               3
             </span>
           </button>
-          <button className="p-2 rounded-md hover:bg-gray-100 text-gray-600">
+          <button
+            onClick={() => setModule("settings")}
+            className={`p-2 rounded-md hover:bg-gray-100 transition-colors ${currentModule === "settings" ? "text-blue-600 bg-blue-50" : "text-gray-600"}`}
+            title="Settings"
+          >
             <Settings size={20} />
           </button>
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
