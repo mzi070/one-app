@@ -1,0 +1,229 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ==================== POS Models ====================
+
+model Product {
+  id          String   @id @default(uuid())
+  name        String
+  sku         String   @unique
+  barcode     String?
+  description String?
+  price       Float
+  cost        Float    @default(0)
+  quantity    Int      @default(0)
+  minStock    Int      @default(5)
+  category    String?
+  unit        String   @default("pcs")
+  taxRate     Float    @default(0)
+  isActive    Boolean  @default(true)
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  variants   ProductVariant[]
+  saleItems  SaleItem[]
+}
+
+model ProductVariant {
+  id        String  @id @default(uuid())
+  productId String
+  name      String
+  sku       String  @unique
+  price     Float
+  cost      Float   @default(0)
+  quantity  Int     @default(0)
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  saleItems SaleItem[]
+}
+
+model Customer {
+  id        String   @id @default(uuid())
+  name      String
+  email     String?
+  phone     String?
+  address   String?
+  credit    Float    @default(0)
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sales Sale[]
+}
+
+model Sale {
+  id            String   @id @default(uuid())
+  invoiceNumber String   @unique
+  customerId    String?
+  subtotal      Float
+  taxAmount     Float    @default(0)
+  discount      Float    @default(0)
+  total         Float
+  paymentMethod String   @default("cash")
+  status        String   @default("completed")
+  notes         String?
+  createdAt     DateTime @default(now())
+
+  customer Customer?  @relation(fields: [customerId], references: [id])
+  items    SaleItem[]
+}
+
+model SaleItem {
+  id        String  @id @default(uuid())
+  saleId    String
+  productId String
+  variantId String?
+  quantity  Int
+  price     Float
+  discount  Float   @default(0)
+  total     Float
+
+  sale    Sale            @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product Product         @relation(fields: [productId], references: [id])
+  variant ProductVariant? @relation(fields: [variantId], references: [id])
+}
+
+// ==================== HR Models ====================
+
+model Employee {
+  id           String   @id @default(uuid())
+  employeeId   String   @unique
+  firstName    String
+  lastName     String
+  email        String   @unique
+  phone        String?
+  position     String
+  departmentId String?
+  salary       Float    @default(0)
+  hireDate     DateTime @default(now())
+  status       String   @default("active")
+  address      String?
+  emergencyContact String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  department   Department?   @relation(fields: [departmentId], references: [id])
+  attendances  Attendance[]
+  leaveRequests LeaveRequest[]
+  payrolls     Payroll[]
+}
+
+model Department {
+  id          String     @id @default(uuid())
+  name        String     @unique
+  description String?
+  managerId   String?
+  createdAt   DateTime   @default(now())
+
+  employees Employee[]
+}
+
+model Attendance {
+  id         String    @id @default(uuid())
+  employeeId String
+  date       DateTime
+  clockIn    DateTime
+  clockOut   DateTime?
+  status     String    @default("present")
+  notes      String?
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model LeaveRequest {
+  id         String   @id @default(uuid())
+  employeeId String
+  type       String
+  startDate  DateTime
+  endDate    DateTime
+  reason     String?
+  status     String   @default("pending")
+  createdAt  DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model Payroll {
+  id          String   @id @default(uuid())
+  employeeId  String
+  period      String
+  baseSalary  Float
+  overtime    Float    @default(0)
+  deductions  Float    @default(0)
+  bonus       Float    @default(0)
+  netPay      Float
+  status      String   @default("pending")
+  paidAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+// ==================== Accounting Models ====================
+
+model Account {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  type        String
+  parentId    String?
+  balance     Float    @default(0)
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  parent   Account?  @relation("AccountHierarchy", fields: [parentId], references: [id])
+  children Account[] @relation("AccountHierarchy")
+  debitEntries  JournalEntry[] @relation("DebitAccount")
+  creditEntries JournalEntry[] @relation("CreditAccount")
+}
+
+model JournalEntry {
+  id            String   @id @default(uuid())
+  date          DateTime
+  description   String
+  debitAccountId  String
+  creditAccountId String
+  amount        Float
+  reference     String?
+  createdAt     DateTime @default(now())
+
+  debitAccount  Account @relation("DebitAccount", fields: [debitAccountId], references: [id])
+  creditAccount Account @relation("CreditAccount", fields: [creditAccountId], references: [id])
+}
+
+model Invoice {
+  id            String   @id @default(uuid())
+  invoiceNumber String   @unique
+  type          String
+  customerName  String
+  customerEmail String?
+  items         String
+  subtotal      Float
+  taxAmount     Float    @default(0)
+  total         Float
+  status        String   @default("draft")
+  dueDate       DateTime
+  paidAt        DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Expense {
+  id          String   @id @default(uuid())
+  category    String
+  description String
+  amount      Float
+  date        DateTime
+  vendor      String?
+  receipt     String?
+  status      String   @default("pending")
+  createdAt   DateTime @default(now())
+}

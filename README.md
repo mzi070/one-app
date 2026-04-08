@@ -1,36 +1,53 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# OneApp - All-in-One Business Management Platform
+
+A comprehensive single-page business management application built with Next.js, featuring POS, HR Management, Accounting, and PDF Tools.
+
+## Features
+
+### Point of Sale (POS)
+- Product catalog with search and category filtering
+- Real-time cart management with quantity controls
+- Multiple payment methods (Cash, Card, Mobile)
+- Customer management with credit tracking
+- Sales reports and analytics
+- Inventory management with stock tracking
+
+### HR Management
+- Employee directory with detailed profiles
+- Attendance tracking (clock in/out)
+- Leave request management with approval workflow
+- Payroll processing with overtime, deductions, and bonuses
+- Department management with budgets
+
+### Accounting
+- Chart of Accounts (Assets, Liabilities, Equity, Revenue, Expense)
+- Invoice creation, sending, and tracking
+- Expense management with category tracking
+- Double-entry journal entries
+- Financial reports (Balance Sheet, Income Statement, Cash Flow)
+
+### PDF Tools
+- Merge, Split, Compress, Rotate, Remove/Extract/Rearrange Pages
+- Images to PDF, PDF to Images, Add Watermark, Page Numbers, Protect PDF
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+npm install
+npx prisma generate
+npx prisma migrate dev
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) to see the app.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Deploy to Vercel
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Push to GitHub
+2. Import at [vercel.com](https://vercel.com)
+3. For database, set up [Turso](https://turso.tech) and add `DATABASE_URL` env var
+4. The app works in demo mode without a database
 
-## Learn More
+## Tech Stack
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Next.js 16 | TypeScript | Tailwind CSS | Prisma | pdf-lib | Zustand
