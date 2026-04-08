@@ -6,14 +6,11 @@ import {
   Merge,
   Scissors,
   Minimize2,
-  Edit3,
   Lock,
   Unlock,
   RotateCw,
   Trash2,
-  Image,
   FileImage,
-  Download,
   Upload,
   CheckCircle,
   X,
@@ -23,8 +20,6 @@ import {
   Stamp,
   Hash,
   SortAsc,
-  FileSearch,
-  AlertCircle,
   Loader2,
 } from "lucide-react";
 
@@ -85,7 +80,7 @@ export default function PDFToolsModule() {
   return (
     <div className="p-6 max-w-6xl mx-auto">
       {/* Header */}
-      <div className="bg-gradient-to-r from-red-600 to-rose-700 rounded-2xl p-6 text-white mb-6">
+      <div className="bg-linear-to-r from-red-600 to-rose-700 rounded-2xl p-6 text-white mb-6">
         <h2 className="text-2xl font-bold">PDF Tools</h2>
         <p className="text-red-100 mt-1">Free online PDF tools to edit, convert, and manage your documents</p>
       </div>
@@ -118,7 +113,7 @@ export default function PDFToolsModule() {
               className="bg-white rounded-xl border border-gray-200 p-5 text-left hover:shadow-lg transition-all duration-200 group"
             >
               <div
-                className={`w-12 h-12 rounded-xl bg-gradient-to-br ${tool.color} flex items-center justify-center mb-3 group-hover:scale-110 transition-transform`}
+                className={`w-12 h-12 rounded-xl bg-linear-to-br ${tool.color} flex items-center justify-center mb-3 group-hover:scale-110 transition-transform`}
               >
                 <Icon size={24} className="text-white" />
               </div>
@@ -212,7 +207,7 @@ function PDFToolWorkspace({ tool, onBack }: { tool: ToolConfig; onBack: () => vo
       {/* Tool Header */}
       <div className="bg-white rounded-2xl border p-6 mb-6">
         <div className="flex items-center gap-4">
-          <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${tool.color} flex items-center justify-center`}>
+          <div className={`w-14 h-14 rounded-xl bg-linear-to-br ${tool.color} flex items-center justify-center`}>
             <IconComp size={28} className="text-white" />
           </div>
           <div>
