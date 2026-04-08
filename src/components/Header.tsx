@@ -1,7 +1,7 @@
 "use client";
 
-import { useAppStore } from "@/store";
-import { Menu, Bell, Settings, User } from "lucide-react";
+import { useAppStore, useProfileStore } from "@/store";
+import { Menu, Bell, Settings } from "lucide-react";
 
 const moduleTitles: Record<string, string> = {
   dashboard: "Dashboard",
@@ -10,10 +10,12 @@ const moduleTitles: Record<string, string> = {
   accounting: "Accounting",
   pdf: "PDF Tools",
   settings: "Settings",
+  profile: "My Profile",
 };
 
 export default function Header() {
   const { currentModule, toggleSidebar, setModule } = useAppStore();
+  const profile = useProfileStore();
 
   return (
     <header className="sticky top-0 z-30 bg-white border-b border-gray-200 px-4 py-3">
@@ -44,9 +46,13 @@ export default function Header() {
           >
             <Settings size={20} />
           </button>
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-            <User size={16} className="text-white" />
-          </div>
+          <button
+            onClick={() => setModule("profile")}
+            className={`w-8 h-8 rounded-full bg-gradient-to-br ${profile.avatarColor} flex items-center justify-center text-white text-xs font-bold hover:ring-2 hover:ring-offset-1 hover:ring-blue-500 transition-all ${currentModule === "profile" ? "ring-2 ring-offset-1 ring-blue-500" : ""}`}
+            title="My Profile"
+          >
+            {profile.avatarInitials}
+          </button>
         </div>
       </div>
     </header>

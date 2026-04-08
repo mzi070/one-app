@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-export type AppModule = "dashboard" | "pos" | "hr" | "accounting" | "pdf" | "settings";
+export type AppModule = "dashboard" | "pos" | "hr" | "accounting" | "pdf" | "settings" | "profile";
 
 interface AppState {
   currentModule: AppModule;
@@ -173,5 +173,79 @@ export const useSettingsStore = create<SettingsState>()(
       resetSettings: () => set(defaultSettings),
     }),
     { name: "oneapp-settings" }
+  )
+);
+
+// ─── Profile Store ────────────────────────────────────────────────────────────
+export interface UserProfile {
+  fullName: string;
+  displayName: string;
+  email: string;
+  phone: string;
+  jobTitle: string;
+  department: string;
+  bio: string;
+  avatarInitials: string;
+  avatarColor: string;
+  location: string;
+  joinDate: string;
+  // Security
+  twoFactorEnabled: boolean;
+  sessionTimeout: number; // minutes
+  // Activity log
+  activityLog: ActivityEntry[];
+}
+
+export interface ActivityEntry {
+  id: string;
+  action: string;
+  module: string;
+  timestamp: string;
+}
+
+interface ProfileState extends UserProfile {
+  updateProfile: (updates: Partial<UserProfile>) => void;
+  addActivity: (entry: Omit<ActivityEntry, "id" | "timestamp">) => void;
+  clearActivity: () => void;
+}
+
+const defaultProfile: UserProfile = {
+  fullName: "Mohamed Zihnee",
+  displayName: "M. Zihnee",
+  email: "mzi@oneapp.com",
+  phone: "+960 000-0000",
+  jobTitle: "System Administrator",
+  department: "IT",
+  bio: "Managing business operations with OneApp.",
+  avatarInitials: "MZ",
+  avatarColor: "from-blue-500 to-purple-600",
+  location: "Malé, Maldives",
+  joinDate: "2024-01-01",
+  twoFactorEnabled: false,
+  sessionTimeout: 30,
+  activityLog: [
+    { id: "1", action: "Logged in", module: "System", timestamp: new Date().toISOString() },
+    { id: "2", action: "Processed sale #INV-001", module: "POS", timestamp: new Date(Date.now() - 3600000).toISOString() },
+    { id: "3", action: "Added employee record", module: "HR", timestamp: new Date(Date.now() - 7200000).toISOString() },
+    { id: "4", action: "Generated invoice", module: "Accounting", timestamp: new Date(Date.now() - 86400000).toISOString() },
+    { id: "5", action: "Converted PDF document", module: "PDF Tools", timestamp: new Date(Date.now() - 172800000).toISOString() },
+  ],
+};
+
+export const useProfileStore = create<ProfileState>()(
+  persist(
+    (set) => ({
+      ...defaultProfile,
+      updateProfile: (updates) => set((state) => ({ ...state, ...updates })),
+      addActivity: (entry) =>
+        set((state) => ({
+          activityLog: [
+            { ...entry, id: crypto.randomUUID(), timestamp: new Date().toISOString() },
+            ...state.activityLog.slice(0, 49),
+          ],
+        })),
+      clearActivity: () => set((state) => ({ ...state, activityLog: [] })),
+    }),
+    { name: "oneapp-profile" }
   )
 );
