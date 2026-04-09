@@ -166,7 +166,39 @@ export const useAppStore = create<AppState>((set) => ({
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
 }));
 
-// POS Store
+// ─── POS Sales History Store ──────────────────────────────────────────────────
+export interface SaleRecord {
+  id: string;
+  timestamp: string;
+  items: Array<{ name: string; productId: string; quantity: number; price: number }>;
+  subtotal: number;
+  tax: number;
+  total: number;
+  paymentMethod: string;
+  itemCount: number;
+}
+
+interface POSSalesState {
+  salesHistory: SaleRecord[];
+  recordSale: (sale: SaleRecord) => void;
+  clearHistory: () => void;
+}
+
+export const usePOSSalesStore = create<POSSalesState>()(
+  persist(
+    (set) => ({
+      salesHistory: [],
+      recordSale: (sale) =>
+        set((state) => ({
+          salesHistory: [sale, ...state.salesHistory].slice(0, 500),
+        })),
+      clearHistory: () => set({ salesHistory: [] }),
+    }),
+    { name: "oneapp-pos-sales" }
+  )
+);
+
+// POS Cart Store
 export interface CartItem {
   id: string;
   productId: string;

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { usePOSStore, notify } from "@/store";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { usePOSStore, usePOSSalesStore, type SaleRecord, notify } from "@/store";
 import {
   Search,
   Plus,
@@ -19,8 +19,14 @@ import {
   ChevronDown,
   Receipt,
   CheckCircle,
+  Download,
+  TrendingUp,
+  TrendingDown,
+  Calendar,
+  Wallet,
+  ArrowLeft,
 } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, cn } from "@/lib/utils";
 
 interface Product {
   id: string;
@@ -75,6 +81,8 @@ export default function POSModule() {
     getTotal,
   } = usePOSStore();
 
+  const { recordSale } = usePOSSalesStore();
+
   const loadProducts = useCallback(async () => {
     try {
       const res = await fetch("/api/products");
@@ -99,23 +107,33 @@ export default function POSModule() {
 
   const handleCheckout = async () => {
     if (cart.length === 0) return;
+    const subtotal = getSubtotal();
+    const tax = subtotal * 0.05;
+    const total = getTotal() + tax;
+    const itemCount = cart.reduce((s, i) => s + i.quantity, 0);
+
+    // Record sale in local history
+    recordSale({
+      id: `TXN-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      items: cart.map((c) => ({ name: c.name, productId: c.productId, quantity: c.quantity, price: c.price })),
+      subtotal,
+      tax,
+      total,
+      paymentMethod,
+      itemCount,
+    });
+
     try {
       await fetch("/api/sales", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: cart,
-          subtotal: getSubtotal(),
-          total: getTotal(),
-          paymentMethod,
-        }),
+        body: JSON.stringify({ items: cart, subtotal, total, paymentMethod }),
       });
     } catch {
       // Continue with local checkout
     }
     setCheckoutDone(true);
-    const total = getTotal();
-    const itemCount = cart.reduce((s, i) => s + i.quantity, 0);
     notify({
       title: "Sale Completed",
       message: `${itemCount} item${itemCount !== 1 ? "s" : ""} sold for ${formatCurrency(total)} via ${paymentMethod}.`,
@@ -552,48 +570,504 @@ function CustomersView({ onBack }: { onBack: () => void }) {
   );
 }
 
+// ─── Demo sales data (30 days) ────────────────────────────────────────────────
+function generateDemoSales(): SaleRecord[] {
+  const products = [
+    { id: "demo-1", name: "Wireless Mouse", price: 29.99 },
+    { id: "demo-2", name: "USB-C Cable", price: 12.99 },
+    { id: "demo-3", name: "Notebook A5", price: 4.99 },
+    { id: "demo-4", name: "Coffee Beans 500g", price: 18.50 },
+    { id: "demo-5", name: "Green Tea Pack", price: 8.99 },
+    { id: "demo-6", name: "Organic Milk 1L", price: 5.49 },
+    { id: "demo-7", name: "Whole Wheat Bread", price: 3.99 },
+    { id: "demo-8", name: "Bluetooth Speaker", price: 49.99 },
+    { id: "demo-9", name: "Cotton T-Shirt", price: 19.99 },
+    { id: "demo-10", name: "Desk Lamp LED", price: 34.99 },
+    { id: "demo-11", name: "Hand Sanitizer", price: 6.99 },
+    { id: "demo-12", name: "Energy Drink 250ml", price: 2.99 },
+  ];
+  const methods = ["cash", "card", "mobile"] as const;
+  const sales: SaleRecord[] = [];
+  const now = new Date();
+  let counter = 800;
+
+  for (let day = 29; day >= 0; day--) {
+    const base = new Date(now);
+    base.setDate(base.getDate() - day);
+    const seed = day * 7 + 3;
+    const count = 6 + (seed % 9);
+
+    for (let i = 0; i < count; i++) {
+      const h = 8 + ((seed * (i + 1) * 3) % 12);
+      const m = (seed * i * 7) % 60;
+      const d = new Date(base);
+      d.setHours(h, m, 0, 0);
+
+      const numItems = 1 + ((seed + i) % 3);
+      const items: SaleRecord["items"] = [];
+      let subtotal = 0;
+      for (let j = 0; j < numItems; j++) {
+        const p = products[(seed * (i + 1) + j * 5) % products.length];
+        const qty = 1 + (j % 3);
+        items.push({ name: p.name, productId: p.id, quantity: qty, price: p.price });
+        subtotal += p.price * qty;
+      }
+      const tax = subtotal * 0.05;
+      sales.push({
+        id: `TXN-${String(++counter).padStart(4, "0")}`,
+        timestamp: d.toISOString(),
+        items,
+        subtotal,
+        tax,
+        total: subtotal + tax,
+        paymentMethod: methods[(seed + i * 3) % 3],
+        itemCount: items.reduce((s, x) => s + x.quantity, 0),
+      });
+    }
+  }
+  return sales;
+}
+
+const DEMO_SALES = generateDemoSales();
+
+type ReportPeriod = "today" | "week" | "month";
+
 function SalesReports({ onBack }: { onBack: () => void }) {
+  const { salesHistory } = usePOSSalesStore();
+  const [period, setPeriod] = useState<ReportPeriod>("week");
+  const [search, setSearch] = useState("");
+  const [methodFilter, setMethodFilter] = useState("all");
+
+  // Merge demo + real sales (real ones first), deduplicate by id
+  const allSales = useMemo<SaleRecord[]>(() => {
+    const seen = new Set<string>();
+    return [...salesHistory, ...DEMO_SALES].filter((s) => {
+      if (seen.has(s.id)) return false;
+      seen.add(s.id);
+      return true;
+    });
+  }, [salesHistory]);
+
+  // Filter by period
+  const periodSales = useMemo(() => {
+    const now = new Date();
+    return allSales.filter((s) => {
+      const d = new Date(s.timestamp);
+      if (period === "today") {
+        return d.toDateString() === now.toDateString();
+      } else if (period === "week") {
+        const cutoff = new Date(now);
+        cutoff.setDate(cutoff.getDate() - 7);
+        return d >= cutoff;
+      } else {
+        const cutoff = new Date(now);
+        cutoff.setDate(cutoff.getDate() - 30);
+        return d >= cutoff;
+      }
+    });
+  }, [allSales, period]);
+
+  // KPIs
+  const kpis = useMemo(() => {
+    const revenue = periodSales.reduce((s, x) => s + x.total, 0);
+    const count = periodSales.length;
+    const avg = count > 0 ? revenue / count : 0;
+    const byMethod = { cash: 0, card: 0, mobile: 0 };
+    periodSales.forEach((s) => {
+      const key = s.paymentMethod as keyof typeof byMethod;
+      if (key in byMethod) byMethod[key] += s.total;
+    });
+    const topMethod = Object.entries(byMethod).sort((a, b) => b[1] - a[1])[0];
+    return { revenue, count, avg, byMethod, topMethod };
+  }, [periodSales]);
+
+  // Daily trend (last 7 or 30 days bucketed by day)
+  const trendData = useMemo(() => {
+    const days = period === "today" ? 1 : period === "week" ? 7 : 30;
+    const buckets: { label: string; revenue: number; count: number }[] = [];
+    const now = new Date();
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const label = period === "today"
+        ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+        : d.toLocaleDateString([], { month: "short", day: "numeric" });
+      const dateStr = d.toDateString();
+      const dayRevenue = periodSales
+        .filter((s) => new Date(s.timestamp).toDateString() === dateStr)
+        .reduce((s, x) => s + x.total, 0);
+      const dayCount = periodSales.filter((s) => new Date(s.timestamp).toDateString() === dateStr).length;
+      buckets.push({ label, revenue: dayRevenue, count: dayCount });
+    }
+    return buckets;
+  }, [periodSales, period]);
+
+  const maxTrend = Math.max(...trendData.map((d) => d.revenue), 1);
+
+  // Top products
+  const topProducts = useMemo(() => {
+    const map = new Map<string, { name: string; qty: number; revenue: number }>();
+    periodSales.forEach((s) => {
+      s.items.forEach((item) => {
+        const existing = map.get(item.name) ?? { name: item.name, qty: 0, revenue: 0 };
+        map.set(item.name, {
+          name: item.name,
+          qty: existing.qty + item.quantity,
+          revenue: existing.revenue + item.price * item.quantity,
+        });
+      });
+    });
+    return [...map.values()].sort((a, b) => b.revenue - a.revenue).slice(0, 8);
+  }, [periodSales]);
+
+  const maxProductRevenue = Math.max(...topProducts.map((p) => p.revenue), 1);
+
+  // Transaction list (filtered)
+  const transactions = useMemo(() => {
+    return periodSales
+      .filter((s) => {
+        const matchSearch = search === "" || s.id.toLowerCase().includes(search.toLowerCase()) || s.items.some((i) => i.name.toLowerCase().includes(search.toLowerCase()));
+        const matchMethod = methodFilter === "all" || s.paymentMethod === methodFilter;
+        return matchSearch && matchMethod;
+      })
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 50);
+  }, [periodSales, search, methodFilter]);
+
+  // CSV Export
+  const handleExport = () => {
+    const rows = [["ID", "Date", "Time", "Items", "Subtotal", "Tax", "Total", "Payment"]];
+    periodSales.forEach((s) => {
+      const d = new Date(s.timestamp);
+      rows.push([
+        s.id,
+        d.toLocaleDateString(),
+        d.toLocaleTimeString(),
+        String(s.itemCount),
+        s.subtotal.toFixed(2),
+        s.tax.toFixed(2),
+        s.total.toFixed(2),
+        s.paymentMethod,
+      ]);
+    });
+    const csv = rows.map((r) => r.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `pos-report-${period}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const methodColors: Record<string, string> = {
+    cash: "text-green-600",
+    card: "text-blue-600",
+    mobile: "text-purple-600",
+  };
+  const methodBg: Record<string, string> = {
+    cash: "bg-green-50",
+    card: "bg-blue-50",
+    mobile: "bg-purple-50",
+  };
+  const methodBadge: Record<string, string> = {
+    cash: "bg-green-100 text-green-700",
+    card: "bg-blue-100 text-blue-700",
+    mobile: "bg-purple-100 text-purple-700",
+  };
+
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <div className="flex items-center gap-3 mb-6">
-        <button onClick={onBack} className="text-sm text-gray-500 hover:text-gray-700">&larr; Back</button>
-        <h2 className="text-xl font-bold">Sales Reports</h2>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        {[
-          { label: "Today", value: "$2,847.50", sub: "32 transactions" },
-          { label: "This Week", value: "$14,231.00", sub: "187 transactions" },
-          { label: "This Month", value: "$52,847.00", sub: "743 transactions" },
-        ].map((stat) => (
-          <div key={stat.label} className="bg-white rounded-xl border p-4">
-            <p className="text-sm text-gray-500">{stat.label}</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{stat.value}</p>
-            <p className="text-xs text-gray-400 mt-0.5">{stat.sub}</p>
+    <div className="flex-1 overflow-y-auto bg-gray-50 p-6">
+      <div className="max-w-7xl mx-auto space-y-6">
+
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <button onClick={onBack} className="p-2 rounded-lg hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors">
+              <ArrowLeft size={18} />
+            </button>
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Sales Reports</h2>
+              <p className="text-sm text-gray-500">Point of Sale performance analytics</p>
+            </div>
           </div>
-        ))}
-      </div>
-      <div className="bg-white rounded-xl border p-6">
-        <h3 className="font-semibold mb-4">Recent Sales</h3>
-        <div className="space-y-3">
-          {[
-            { id: "INV-0847", amount: "$345.00", method: "Card", time: "10:32 AM" },
-            { id: "INV-0846", amount: "$128.50", method: "Cash", time: "10:15 AM" },
-            { id: "INV-0845", amount: "$67.99", method: "Mobile", time: "9:48 AM" },
-            { id: "INV-0844", amount: "$892.00", method: "Card", time: "9:22 AM" },
-            { id: "INV-0843", amount: "$45.50", method: "Cash", time: "9:01 AM" },
-          ].map((sale) => (
-            <div key={sale.id} className="flex items-center justify-between py-2 border-b border-gray-50">
-              <div>
-                <span className="text-sm font-medium">{sale.id}</span>
-                <span className="text-xs text-gray-400 ml-3">{sale.time}</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100">{sale.method}</span>
-                <span className="text-sm font-semibold">{sale.amount}</span>
+          <div className="flex items-center gap-2">
+            {/* Period tabs */}
+            <div className="flex bg-white border border-gray-200 rounded-lg p-0.5">
+              {(["today", "week", "month"] as const).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setPeriod(p)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-md text-sm font-medium transition-colors capitalize",
+                    period === p ? "bg-green-600 text-white" : "text-gray-500 hover:text-gray-700"
+                  )}
+                >
+                  {p === "today" ? "Today" : p === "week" ? "7 Days" : "30 Days"}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={handleExport}
+              className="flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              <Download size={15} /> Export CSV
+            </button>
+          </div>
+        </div>
+
+        {/* KPI Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Revenue</p>
+              <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center">
+                <TrendingUp size={16} className="text-green-600" />
               </div>
             </div>
-          ))}
+            <p className="text-2xl font-bold text-gray-900">{formatCurrency(kpis.revenue)}</p>
+            <p className="text-xs text-gray-400 mt-0.5">{kpis.count} transactions</p>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Transactions</p>
+              <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+                <Receipt size={16} className="text-blue-600" />
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-gray-900">{kpis.count}</p>
+            <p className="text-xs text-gray-400 mt-0.5">Completed sales</p>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Avg Order</p>
+              <div className="w-8 h-8 rounded-lg bg-orange-50 flex items-center justify-center">
+                <ShoppingBag size={16} className="text-orange-600" />
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-gray-900">{formatCurrency(kpis.avg)}</p>
+            <p className="text-xs text-gray-400 mt-0.5">Per transaction</p>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Top Method</p>
+              <div className="w-8 h-8 rounded-lg bg-purple-50 flex items-center justify-center">
+                <Wallet size={16} className="text-purple-600" />
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-gray-900 capitalize">{kpis.topMethod?.[0] ?? "—"}</p>
+            <p className="text-xs text-gray-400 mt-0.5">{formatCurrency(kpis.topMethod?.[1] ?? 0)}</p>
+          </div>
         </div>
+
+        {/* Trend + Payment Breakdown */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Sales Trend */}
+          <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                <Calendar size={16} className="text-gray-400" />
+                Revenue Trend
+              </h3>
+              <p className="text-xs text-gray-400">{period === "today" ? "Today" : period === "week" ? "Last 7 days" : "Last 30 days"}</p>
+            </div>
+            <div className="flex items-end gap-1 h-36">
+              {trendData.map((d, i) => (
+                <div key={i} className="flex-1 flex flex-col items-center gap-1 group relative">
+                  <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
+                    {formatCurrency(d.revenue)} · {d.count} sales
+                  </div>
+                  <div
+                    className="w-full bg-green-500 rounded-t hover:bg-green-600 transition-colors cursor-default"
+                    style={{ height: `${Math.max(4, (d.revenue / maxTrend) * 100)}%` }}
+                  />
+                </div>
+              ))}
+            </div>
+            {/* X-axis labels — show every nth for readability */}
+            <div className="flex items-center gap-1 mt-1">
+              {trendData.map((d, i) => {
+                const step = trendData.length > 14 ? Math.ceil(trendData.length / 7) : 1;
+                return (
+                  <div key={i} className="flex-1 text-center overflow-hidden">
+                    {i % step === 0 && (
+                      <span className="text-[9px] text-gray-400">{d.label}</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {/* Summary under chart */}
+            <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-100">
+              <span className="flex items-center gap-1.5 text-xs text-gray-500">
+                <span className="w-3 h-3 rounded-sm bg-green-500 inline-block" /> Revenue
+              </span>
+              <span className="text-xs text-gray-400">
+                Peak day: {formatCurrency(maxTrend)} · {kpis.count} total transactions
+              </span>
+            </div>
+          </div>
+
+          {/* Payment Method Breakdown */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <h3 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
+              <CreditCard size={16} className="text-gray-400" />
+              Payment Methods
+            </h3>
+            <div className="space-y-4">
+              {(["cash", "card", "mobile"] as const).map((method) => {
+                const val = kpis.byMethod[method];
+                const pct = kpis.revenue > 0 ? (val / kpis.revenue) * 100 : 0;
+                const Icon = method === "cash" ? Banknote : method === "card" ? CreditCard : Smartphone;
+                return (
+                  <div key={method}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center", methodBg[method])}>
+                          <Icon size={14} className={methodColors[method]} />
+                        </div>
+                        <span className="text-sm font-medium text-gray-700 capitalize">{method}</span>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-gray-800">{formatCurrency(val)}</p>
+                        <p className="text-xs text-gray-400">{pct.toFixed(1)}%</p>
+                      </div>
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-1.5">
+                      <div
+                        className={cn("h-1.5 rounded-full transition-all", method === "cash" ? "bg-green-500" : method === "card" ? "bg-blue-500" : "bg-purple-500")}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-5 pt-4 border-t border-gray-100">
+              <p className="text-xs font-semibold text-gray-400 uppercase mb-2">Transaction Count</p>
+              {(["cash", "card", "mobile"] as const).map((method) => (
+                <div key={method} className="flex justify-between text-sm py-1">
+                  <span className="text-gray-600 capitalize">{method}</span>
+                  <span className="font-medium text-gray-800">
+                    {periodSales.filter((s) => s.paymentMethod === method).length}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Top Products + Transaction List */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+          {/* Top Products */}
+          <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-5">
+            <h3 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
+              <Package size={16} className="text-gray-400" />
+              Top Products
+            </h3>
+            <div className="space-y-3">
+              {topProducts.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-6">No sales data for this period</p>
+              ) : (
+                topProducts.map((p, i) => (
+                  <div key={p.name}>
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-xs font-bold text-gray-400 w-4">{i + 1}</span>
+                        <span className="text-sm text-gray-700 truncate">{p.name}</span>
+                      </div>
+                      <div className="text-right ml-2 shrink-0">
+                        <p className="text-sm font-semibold text-gray-800">{formatCurrency(p.revenue)}</p>
+                        <p className="text-xs text-gray-400">{p.qty} sold</p>
+                      </div>
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-1">
+                      <div
+                        className="h-1 bg-green-400 rounded-full"
+                        style={{ width: `${(p.revenue / maxProductRevenue) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Transaction List */}
+          <div className="lg:col-span-3 bg-white rounded-xl border border-gray-200 flex flex-col">
+            <div className="p-4 border-b border-gray-100">
+              <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                <Receipt size={16} className="text-gray-400" />
+                Transactions
+                <span className="text-xs font-normal text-gray-400">({transactions.length} shown)</span>
+              </h3>
+              <div className="flex gap-2">
+                <div className="flex-1 relative">
+                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search ID or product..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-green-500 outline-none"
+                  />
+                </div>
+                <select
+                  value={methodFilter}
+                  onChange={(e) => setMethodFilter(e.target.value)}
+                  className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs bg-white"
+                >
+                  <option value="all">All methods</option>
+                  <option value="cash">Cash</option>
+                  <option value="card">Card</option>
+                  <option value="mobile">Mobile</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {transactions.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                  <Receipt size={32} className="opacity-30 mb-2" />
+                  <p className="text-sm">No transactions found</p>
+                </div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-100 sticky top-0">
+                    <tr>
+                      <th className="text-left px-4 py-2.5 font-medium text-gray-500 text-xs">ID</th>
+                      <th className="text-left px-4 py-2.5 font-medium text-gray-500 text-xs">Date & Time</th>
+                      <th className="text-center px-4 py-2.5 font-medium text-gray-500 text-xs">Items</th>
+                      <th className="text-center px-4 py-2.5 font-medium text-gray-500 text-xs">Method</th>
+                      <th className="text-right px-4 py-2.5 font-medium text-gray-500 text-xs">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {transactions.map((s) => {
+                      const d = new Date(s.timestamp);
+                      return (
+                        <tr key={s.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                          <td className="px-4 py-2.5 font-mono text-xs text-gray-500">{s.id}</td>
+                          <td className="px-4 py-2.5">
+                            <p className="text-xs text-gray-700">{d.toLocaleDateString()}</p>
+                            <p className="text-xs text-gray-400">{d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
+                          </td>
+                          <td className="px-4 py-2.5 text-center text-xs text-gray-600">{s.itemCount}</td>
+                          <td className="px-4 py-2.5 text-center">
+                            <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium capitalize", methodBadge[s.paymentMethod] ?? "bg-gray-100 text-gray-600")}>
+                              {s.paymentMethod}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2.5 text-right font-semibold text-gray-800 text-xs">{formatCurrency(s.total)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   );
