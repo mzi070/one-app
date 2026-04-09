@@ -47,6 +47,8 @@ interface Product {
   quantity: number;
   category: string | null;
   imageUrl: string | null;
+  cost?: number;
+  description?: string | null;
 }
 
 type POSView = "sale" | "products" | "customers" | "reports";
@@ -514,121 +516,738 @@ export default function POSModule() {
   );
 }
 
-function ProductsManager({ products, onBack, onRefresh }: { products: Product[]; onBack: () => void; onRefresh: () => void }) {
-  const [showAdd, setShowAdd] = useState(false);
+// ─── Products Management ──────────────────────────────────────────────────────
+interface ProductFormData {
+  name: string;
+  sku: string;
+  price: string;
+  cost: string;
+  quantity: string;
+  category: string;
+  description: string;
+}
+
+function ProductFormModal({
+  product,
+  onClose,
+  onSave,
+}: {
+  product: Product | null;
+  onClose: () => void;
+  onSave: (data: ProductFormData) => void;
+}) {
+  const [form, setForm] = useState<ProductFormData>(
+    product
+      ? {
+          name: product.name,
+          sku: product.sku,
+          price: String(product.price),
+          cost: String(product.cost ?? ""),
+          quantity: String(product.quantity),
+          category: product.category || "Other",
+          description: product.description || "",
+        }
+      : { name: "", sku: "", price: "", cost: "", quantity: "", category: "Other", description: "" }
+  );
+
+  const setField = (k: keyof ProductFormData, v: string) => setForm((prev) => ({ ...prev, [k]: v }));
+
+  const priceNum = parseFloat(form.price) || 0;
+  const costNum = parseFloat(form.cost) || 0;
+  const marginPct = priceNum > 0 && costNum > 0 ? (((priceNum - costNum) / priceNum) * 100).toFixed(1) : null;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.name.trim() || !form.sku.trim() || !form.price || !form.quantity) return;
+    onSave(form);
+  };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <button onClick={onBack} className="text-sm text-gray-500 hover:text-gray-700">&larr; Back to Sale</button>
-          <h2 className="text-xl font-bold">Product Inventory</h2>
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <form
+        onSubmit={handleSubmit}
+        className="bg-white rounded-2xl p-6 max-w-lg w-full space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-bold text-gray-900">{product ? "Edit Product" : "Add Product"}</h3>
+          <button type="button" onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400">
+            <X size={20} />
+          </button>
         </div>
-        <button
-          onClick={() => setShowAdd(true)}
-          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 text-sm"
-        >
-          <Plus size={16} /> Add Product
-        </button>
-      </div>
 
-      <div className="bg-white rounded-xl border overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b">
-            <tr>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Product</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">SKU</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Category</th>
-              <th className="text-right px-4 py-3 font-medium text-gray-600">Price</th>
-              <th className="text-right px-4 py-3 font-medium text-gray-600">Stock</th>
-              <th className="text-center px-4 py-3 font-medium text-gray-600">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {products.map((p) => (
-              <tr key={p.id} className="border-b hover:bg-gray-50">
-                <td className="px-4 py-3 font-medium">{p.name}</td>
-                <td className="px-4 py-3 text-gray-500">{p.sku}</td>
-                <td className="px-4 py-3"><Tag size={12} className="inline mr-1" />{p.category || "N/A"}</td>
-                <td className="px-4 py-3 text-right font-medium">{formatCurrency(p.price)}</td>
-                <td className="px-4 py-3 text-right">{p.quantity}</td>
-                <td className="px-4 py-3 text-center">
-                  <span className={`px-2 py-0.5 rounded-full text-xs ${p.quantity > 10 ? "bg-green-100 text-green-700" : p.quantity > 0 ? "bg-yellow-100 text-yellow-700" : "bg-red-100 text-red-700"}`}>
-                    {p.quantity > 10 ? "In Stock" : p.quantity > 0 ? "Low" : "Out"}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2">
+            <label className="text-xs font-medium text-gray-600 mb-1 block">Product Name *</label>
+            <input
+              type="text"
+              value={form.name}
+              onChange={(e) => setField("name", e.target.value)}
+              required
+              placeholder="e.g. Wireless Mouse"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-green-500 outline-none"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-600 mb-1 block">SKU *</label>
+            <input
+              type="text"
+              value={form.sku}
+              onChange={(e) => setField("sku", e.target.value)}
+              required
+              placeholder="e.g. WM-001"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-green-500 outline-none"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-600 mb-1 block">Category</label>
+            <select
+              value={form.category}
+              onChange={(e) => setField("category", e.target.value)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-green-500 outline-none"
+            >
+              {categories.filter((c) => c !== "all").map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-600 mb-1 block">Selling Price *</label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.price}
+                onChange={(e) => setField("price", e.target.value)}
+                required
+                placeholder="0.00"
+                className="w-full pl-7 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-green-500 outline-none"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-600 mb-1 block">Cost Price</label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.cost}
+                onChange={(e) => setField("cost", e.target.value)}
+                placeholder="0.00"
+                className="w-full pl-7 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-green-500 outline-none"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-600 mb-1 block">Stock Quantity *</label>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={form.quantity}
+              onChange={(e) => setField("quantity", e.target.value)}
+              required
+              placeholder="0"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-green-500 outline-none"
+            />
+          </div>
+          {marginPct !== null && (
+            <div className="col-span-2 flex items-center gap-2 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
+              <TrendingUp size={12} className="text-green-500" />
+              Margin: <span className="font-semibold ml-1">{marginPct}%</span>
+              &nbsp;·&nbsp; Profit per unit: <span className="font-semibold ml-1">{formatCurrency(priceNum - costNum)}</span>
+            </div>
+          )}
+          <div className="col-span-2">
+            <label className="text-xs font-medium text-gray-600 mb-1 block">Description</label>
+            <textarea
+              rows={2}
+              value={form.description}
+              onChange={(e) => setField("description", e.target.value)}
+              placeholder="Optional product description..."
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-green-500 outline-none resize-none"
+            />
+          </div>
+        </div>
 
-      {showAdd && <AddProductModal onClose={() => setShowAdd(false)} onAdded={onRefresh} />}
+        <div className="flex gap-2 pt-1">
+          <button type="button" onClick={onClose} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">
+            Cancel
+          </button>
+          <button type="submit" className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-semibold">
+            {product ? "Save Changes" : "Add Product"}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
 
-function AddProductModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
-  const [form, setForm] = useState({ name: "", sku: "", price: "", quantity: "", category: "Other" });
-  const [saving, setSaving] = useState(false);
+function StockAdjustModal({
+  product,
+  onClose,
+  onAdjust,
+}: {
+  product: Product;
+  onClose: () => void;
+  onAdjust: (newQty: number) => void;
+}) {
+  const [mode, setMode] = useState<"add" | "remove" | "set">("add");
+  const [amount, setAmount] = useState("");
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      await fetch("/api/products", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...form,
-          price: parseFloat(form.price),
-          quantity: parseInt(form.quantity),
-        }),
-      });
-      onAdded();
-      onClose();
-    } catch {
-      alert("Failed to save product");
-    }
-    setSaving(false);
-  };
+  const newQty = useMemo(() => {
+    const val = parseInt(amount) || 0;
+    if (mode === "add") return product.quantity + val;
+    if (mode === "remove") return Math.max(0, product.quantity - val);
+    return Math.max(0, val);
+  }, [mode, amount, product.quantity]);
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 max-w-md w-full space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-bold">Add Product</h3>
-          <button type="button" onClick={onClose} className="p-1 rounded hover:bg-gray-100"><X size={20} /></button>
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-bold text-gray-900">Adjust Stock</h3>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400"><X size={20} /></button>
         </div>
-        {(["name", "sku", "price", "quantity"] as const).map((field) => (
-          <div key={field}>
-            <label className="text-sm font-medium text-gray-700 capitalize">{field}</label>
+        <p className="text-sm text-gray-600 mb-4">
+          <span className="font-medium">{product.name}</span> — Current: <span className="font-bold">{product.quantity}</span> units
+        </p>
+        <div className="flex gap-1 p-1 bg-gray-100 rounded-lg mb-4">
+          {(["add", "remove", "set"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => { setMode(m); setAmount(""); }}
+              className={cn("flex-1 py-1.5 rounded-md text-xs font-medium transition-colors", mode === m ? "bg-white shadow text-gray-900" : "text-gray-500 hover:text-gray-700")}
+            >
+              {m === "add" ? "Add" : m === "remove" ? "Remove" : "Set Exact"}
+            </button>
+          ))}
+        </div>
+        <input
+          type="number"
+          min="0"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          placeholder={mode === "set" ? "Enter exact quantity" : "Enter amount"}
+          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-green-500 outline-none mb-3"
+          autoFocus
+        />
+        {amount && (
+          <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2 mb-4 flex items-center gap-2">
+            <Package size={12} />
+            New stock: <span className={cn("font-bold ml-1", newQty === 0 ? "text-red-600" : newQty <= 10 ? "text-yellow-600" : "text-green-600")}>{newQty} units</span>
+          </div>
+        )}
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
+          <button
+            onClick={() => { if (amount) { onAdjust(newQty); onClose(); } }}
+            disabled={!amount}
+            className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-semibold disabled:opacity-50"
+          >
+            Apply
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProductsManager({ products: initialProducts, onBack, onRefresh }: { products: Product[]; onBack: () => void; onRefresh: () => void }) {
+  const [products, setProducts] = useState<Product[]>(initialProducts);
+  const [search, setSearch] = useState("");
+  const [filterCategory, setFilterCategory] = useState("all");
+  const [sortBy, setSortBy] = useState<"name" | "price-asc" | "price-desc" | "stock-asc" | "stock-desc">("name");
+  const [viewMode, setViewMode] = useState<"table" | "grid">("table");
+  const [showModal, setShowModal] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [stockProduct, setStockProduct] = useState<Product | null>(null);
+  const [copiedSku, setCopiedSku] = useState<string | null>(null);
+
+  const LOW_STOCK = 10;
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return products
+      .filter((p) => {
+        const matchQ =
+          p.name.toLowerCase().includes(q) ||
+          p.sku.toLowerCase().includes(q) ||
+          (p.category?.toLowerCase().includes(q) ?? false) ||
+          (p.description?.toLowerCase().includes(q) ?? false);
+        const matchCat = filterCategory === "all" || p.category === filterCategory;
+        return matchQ && matchCat;
+      })
+      .sort((a, b) => {
+        switch (sortBy) {
+          case "price-asc": return a.price - b.price;
+          case "price-desc": return b.price - a.price;
+          case "stock-asc": return a.quantity - b.quantity;
+          case "stock-desc": return b.quantity - a.quantity;
+          default: return a.name.localeCompare(b.name);
+        }
+      });
+  }, [products, search, filterCategory, sortBy]);
+
+  const kpis = useMemo(() => {
+    const priced = products.filter((p) => p.price > 0 && (p.cost ?? 0) > 0);
+    return {
+      total: products.length,
+      totalValue: products.reduce((s, p) => s + p.price * p.quantity, 0),
+      totalCost: products.reduce((s, p) => s + (p.cost ?? 0) * p.quantity, 0),
+      lowStock: products.filter((p) => p.quantity > 0 && p.quantity <= LOW_STOCK).length,
+      outOfStock: products.filter((p) => p.quantity === 0).length,
+      avgMargin:
+        priced.length > 0
+          ? priced.reduce((s, p) => s + ((p.price - (p.cost ?? 0)) / p.price) * 100, 0) / priced.length
+          : 0,
+    };
+  }, [products]);
+
+  const handleSave = async (data: ProductFormData) => {
+    const payload = {
+      name: data.name.trim(),
+      sku: data.sku.trim(),
+      price: parseFloat(data.price),
+      cost: parseFloat(data.cost || "0"),
+      quantity: parseInt(data.quantity),
+      category: data.category,
+      description: data.description.trim() || null,
+    };
+
+    if (editingProduct) {
+      const updated = { ...editingProduct, ...payload };
+      setProducts((prev) => prev.map((p) => p.id === editingProduct.id ? updated : p));
+      try {
+        await fetch(`/api/products/${editingProduct.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } catch { /* local update done */ }
+      notify({ title: "Product Updated", message: `${payload.name} has been updated.`, category: "pos", priority: "success" });
+    } else {
+      const tempId = `local-${Date.now()}`;
+      setProducts((prev) => [{ id: tempId, imageUrl: null, ...payload }, ...prev]);
+      try {
+        const res = await fetch("/api/products", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          const created = await res.json();
+          setProducts((prev) => prev.map((p) => p.id === tempId ? created : p));
+        }
+      } catch { /* keep temp */ }
+      notify({ title: "Product Added", message: `${payload.name} added to inventory.`, category: "pos", priority: "success" });
+    }
+
+    setShowModal(false);
+    setEditingProduct(null);
+  };
+
+  const handleDelete = async (product: Product) => {
+    if (!confirm(`Delete "${product.name}"? This cannot be undone.`)) return;
+    setProducts((prev) => prev.filter((p) => p.id !== product.id));
+    try {
+      await fetch(`/api/products/${product.id}`, { method: "DELETE" });
+    } catch { /* local delete done */ }
+    notify({ title: "Product Deleted", message: `${product.name} removed from inventory.`, category: "pos", priority: "info" });
+  };
+
+  const handleStockAdjust = async (product: Product, newQty: number) => {
+    setProducts((prev) => prev.map((p) => p.id === product.id ? { ...p, quantity: newQty } : p));
+    try {
+      await fetch(`/api/products/${product.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quantity: newQty }),
+      });
+    } catch { /* local update done */ }
+    if (newQty <= LOW_STOCK && newQty > 0) {
+      notify({ title: "Low Stock Warning", message: `${product.name} has only ${newQty} units left.`, category: "pos", priority: "warning" });
+    }
+  };
+
+  const copySku = (sku: string) => {
+    navigator.clipboard.writeText(sku).catch(() => {});
+    setCopiedSku(sku);
+    setTimeout(() => setCopiedSku(null), 1500);
+  };
+
+  const exportCsv = () => {
+    const headers = ["Name", "SKU", "Category", "Price", "Cost", "Quantity", "Status"];
+    const rows = products.map((p) => [
+      `"${p.name}"`,
+      p.sku,
+      p.category || "",
+      p.price.toFixed(2),
+      (p.cost ?? 0).toFixed(2),
+      p.quantity,
+      p.quantity === 0 ? "Out of Stock" : p.quantity <= LOW_STOCK ? "Low Stock" : "In Stock",
+    ]);
+    const csv = [headers, ...rows].map((r) => r.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "products.csv"; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const catColors: Record<string, string> = {
+    Electronics: "bg-blue-100 text-blue-700",
+    Grocery: "bg-green-100 text-green-700",
+    Beverages: "bg-cyan-100 text-cyan-700",
+    Clothing: "bg-purple-100 text-purple-700",
+    Other: "bg-gray-100 text-gray-600",
+  };
+
+  const statusBadge = (qty: number) =>
+    qty === 0
+      ? { label: "Out of Stock", cls: "bg-red-100 text-red-700" }
+      : qty <= LOW_STOCK
+      ? { label: "Low Stock", cls: "bg-yellow-100 text-yellow-700" }
+      : { label: "In Stock", cls: "bg-green-100 text-green-700" };
+
+  const calcMargin = (p: Product) =>
+    p.price > 0 && (p.cost ?? 0) > 0
+      ? Math.round(((p.price - (p.cost ?? 0)) / p.price) * 100)
+      : null;
+
+  return (
+    <div className="flex-1 overflow-y-auto bg-gray-50">
+      <div className="max-w-7xl mx-auto p-6 space-y-5">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <button onClick={onBack} className="p-2 rounded-lg hover:bg-gray-200 text-gray-500 transition-colors">
+              <ArrowLeft size={18} />
+            </button>
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Product Inventory</h2>
+              <p className="text-sm text-gray-500">{products.length} products · {formatCurrency(kpis.totalValue)} retail value</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={exportCsv}
+              className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 bg-white rounded-lg text-sm text-gray-600 hover:border-gray-300 transition-colors"
+            >
+              <Download size={14} /> Export CSV
+            </button>
+            <button
+              onClick={() => { setEditingProduct(null); setShowModal(true); }}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
+            >
+              <Plus size={16} /> Add Product
+            </button>
+          </div>
+        </div>
+
+        {/* KPI Strip */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {[
+            { label: "Total SKUs", value: String(kpis.total), icon: Package, color: "bg-blue-50 text-blue-600" },
+            { label: "Retail Value", value: formatCurrency(kpis.totalValue), icon: TrendingUp, color: "bg-green-50 text-green-600" },
+            { label: "Stock Cost", value: formatCurrency(kpis.totalCost), icon: Wallet, color: "bg-purple-50 text-purple-600" },
+            { label: "Avg Margin", value: `${kpis.avgMargin.toFixed(1)}%`, icon: BarChart3, color: "bg-orange-50 text-orange-600" },
+            { label: "Low Stock", value: String(kpis.lowStock), icon: AlertCircle, color: "bg-yellow-50 text-yellow-600" },
+            { label: "Out of Stock", value: String(kpis.outOfStock), icon: TrendingDown, color: "bg-red-50 text-red-600" },
+          ].map((k) => {
+            const Icon = k.icon;
+            return (
+              <div key={k.label} className="bg-white rounded-xl border border-gray-200 p-3">
+                <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center mb-2", k.color)}>
+                  <Icon size={13} />
+                </div>
+                <p className="text-base font-bold text-gray-900">{k.value}</p>
+                <p className="text-xs text-gray-400">{k.label}</p>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Stock Alert Banner */}
+        {(kpis.outOfStock > 0 || kpis.lowStock > 0) && (
+          <div className={cn("rounded-xl px-4 py-3 flex items-center gap-3 text-sm border", kpis.outOfStock > 0 ? "bg-red-50 border-red-200 text-red-700" : "bg-yellow-50 border-yellow-200 text-yellow-700")}>
+            <AlertCircle size={16} className="shrink-0" />
+            <span>
+              {kpis.outOfStock > 0 && `${kpis.outOfStock} product${kpis.outOfStock > 1 ? "s are" : " is"} out of stock. `}
+              {kpis.lowStock > 0 && `${kpis.lowStock} product${kpis.lowStock > 1 ? "s are" : " is"} running low on stock.`}
+              {" "}Review and restock as needed.
+            </span>
+          </div>
+        )}
+
+        {/* Search + Sort + View Toggle */}
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex-1 relative">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
-              type={field === "price" || field === "quantity" ? "number" : "text"}
-              required
-              step={field === "price" ? "0.01" : undefined}
-              value={form[field]}
-              onChange={(e) => setForm({ ...form, [field]: e.target.value })}
-              className="w-full mt-1 px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-green-500 outline-none"
+              type="text"
+              placeholder="Search by name, SKU, or description..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 border border-gray-200 bg-white rounded-lg text-sm focus:ring-2 focus:ring-green-500 outline-none"
             />
           </div>
-        ))}
-        <div>
-          <label className="text-sm font-medium text-gray-700">Category</label>
-          <select
-            value={form.category}
-            onChange={(e) => setForm({ ...form, category: e.target.value })}
-            className="w-full mt-1 px-3 py-2 border rounded-lg text-sm"
-          >
-            {categories.filter((c) => c !== "all").map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
+          <div className="flex items-center gap-2">
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+              className="px-3 py-2 border border-gray-200 bg-white rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-500"
+            >
+              <option value="name">Name A-Z</option>
+              <option value="price-asc">Price ↑</option>
+              <option value="price-desc">Price ↓</option>
+              <option value="stock-asc">Stock ↑</option>
+              <option value="stock-desc">Stock ↓</option>
+            </select>
+            <div className="flex rounded-lg border border-gray-200 bg-white overflow-hidden">
+              <button
+                onClick={() => setViewMode("table")}
+                className={cn("px-3 py-2 transition-colors", viewMode === "table" ? "bg-green-600 text-white" : "text-gray-400 hover:bg-gray-50")}
+                title="Table view"
+              >
+                <BarChart3 size={14} />
+              </button>
+              <button
+                onClick={() => setViewMode("grid")}
+                className={cn("px-3 py-2 transition-colors", viewMode === "grid" ? "bg-green-600 text-white" : "text-gray-400 hover:bg-gray-50")}
+                title="Card grid view"
+              >
+                <Package size={14} />
+              </button>
+            </div>
+          </div>
         </div>
-        <button type="submit" disabled={saving} className="w-full py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium disabled:opacity-50">
-          {saving ? "Saving..." : "Add Product"}
-        </button>
-      </form>
+
+        {/* Category Filter Pills */}
+        <div className="flex gap-2 flex-wrap">
+          {categories.map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setFilterCategory(cat)}
+              className={cn(
+                "px-3 py-1.5 rounded-full text-xs font-medium transition-colors",
+                filterCategory === cat
+                  ? "bg-green-600 text-white"
+                  : "bg-white border border-gray-200 text-gray-500 hover:border-green-400 hover:text-green-600"
+              )}
+            >
+              {cat === "all" ? "All Categories" : cat}
+              {cat !== "all" && (
+                <span className="ml-1 opacity-60">({products.filter((p) => p.category === cat).length})</span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Empty State */}
+        {filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 bg-white rounded-xl border border-gray-200">
+            <Package size={48} className="text-gray-200 mb-3" />
+            <p className="text-sm text-gray-400 mb-1">No products found</p>
+            <p className="text-xs text-gray-400">Try adjusting your search or filters</p>
+            <button
+              onClick={() => { setEditingProduct(null); setShowModal(true); }}
+              className="mt-4 text-sm text-green-600 hover:text-green-700 font-medium"
+            >
+              + Add a new product
+            </button>
+          </div>
+
+        ) : viewMode === "table" ? (
+          /* ── Table View ── */
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-100">
+                  <tr>
+                    <th className="text-left px-4 py-3 font-medium text-gray-500 text-xs">Product</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-500 text-xs hidden sm:table-cell">SKU</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-500 text-xs hidden md:table-cell">Category</th>
+                    <th className="text-right px-4 py-3 font-medium text-gray-500 text-xs">Price</th>
+                    <th className="text-right px-4 py-3 font-medium text-gray-500 text-xs hidden lg:table-cell">Cost</th>
+                    <th className="text-right px-4 py-3 font-medium text-gray-500 text-xs hidden lg:table-cell">Margin</th>
+                    <th className="text-center px-4 py-3 font-medium text-gray-500 text-xs">Stock</th>
+                    <th className="text-center px-4 py-3 font-medium text-gray-500 text-xs hidden sm:table-cell">Status</th>
+                    <th className="px-4 py-3" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((p) => {
+                    const { label, cls } = statusBadge(p.quantity);
+                    const m = calcMargin(p);
+                    const isLow = p.quantity > 0 && p.quantity <= LOW_STOCK;
+                    const isOut = p.quantity === 0;
+                    return (
+                      <tr
+                        key={p.id}
+                        className={cn("border-b border-gray-50 hover:bg-gray-50 transition-colors", isOut ? "bg-red-50/40" : isLow ? "bg-yellow-50/40" : "")}
+                      >
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0", catColors[p.category || "Other"] || "bg-gray-100 text-gray-600")}>
+                              {p.name.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <p className="font-medium text-gray-800 leading-tight">{p.name}</p>
+                              {p.description && <p className="text-xs text-gray-400 truncate max-w-44">{p.description}</p>}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 hidden sm:table-cell">
+                          <button
+                            onClick={() => copySku(p.sku)}
+                            className="flex items-center gap-1 px-2 py-0.5 border border-dashed border-gray-200 rounded text-xs text-gray-500 hover:border-green-400 hover:text-green-600 transition-colors"
+                            title="Click to copy SKU"
+                          >
+                            {p.sku}
+                            {copiedSku === p.sku ? <CheckCircle size={10} className="text-green-500" /> : <Tag size={10} />}
+                          </button>
+                        </td>
+                        <td className="px-4 py-3 hidden md:table-cell">
+                          {p.category && (
+                            <span className={cn("text-xs px-2 py-1 rounded-full font-medium", catColors[p.category] || "bg-gray-100 text-gray-600")}>
+                              {p.category}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right font-semibold text-gray-800">{formatCurrency(p.price)}</td>
+                        <td className="px-4 py-3 text-right text-gray-500 text-xs hidden lg:table-cell">
+                          {(p.cost ?? 0) > 0 ? formatCurrency(p.cost ?? 0) : "—"}
+                        </td>
+                        <td className="px-4 py-3 text-right hidden lg:table-cell">
+                          {m !== null ? (
+                            <span className={cn("text-xs font-medium", m >= 30 ? "text-green-600" : m >= 10 ? "text-yellow-600" : "text-red-500")}>
+                              {m}%
+                            </span>
+                          ) : "—"}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <button
+                            onClick={() => setStockProduct(p)}
+                            className={cn("px-2.5 py-0.5 rounded-lg text-sm font-bold hover:bg-gray-100 transition-colors min-w-10", isOut ? "text-red-600" : isLow ? "text-yellow-600" : "text-gray-800")}
+                            title="Click to adjust stock"
+                          >
+                            {p.quantity}
+                          </button>
+                        </td>
+                        <td className="px-4 py-3 text-center hidden sm:table-cell">
+                          <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", cls)}>{label}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1 justify-end">
+                            <button
+                              onClick={() => setStockProduct(p)}
+                              className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                              title="Adjust stock"
+                            >
+                              <Package size={13} />
+                            </button>
+                            <button
+                              onClick={() => { setEditingProduct(p); setShowModal(true); }}
+                              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                              title="Edit product"
+                            >
+                              <Edit3 size={13} />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(p)}
+                              className="p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors"
+                              title="Delete product"
+                            >
+                              <TrashIcon size={13} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        ) : (
+          /* ── Card Grid View ── */
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+            {filtered.map((p) => {
+              const { label, cls } = statusBadge(p.quantity);
+              const m = calcMargin(p);
+              const isLow = p.quantity > 0 && p.quantity <= LOW_STOCK;
+              const isOut = p.quantity === 0;
+              return (
+                <div key={p.id} className={cn("bg-white rounded-xl border p-4 hover:shadow-md transition-shadow", isOut ? "border-red-200" : isLow ? "border-yellow-200" : "border-gray-200")}>
+                  <div className="flex items-start justify-between mb-3">
+                    <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold", catColors[p.category || "Other"] || "bg-gray-100 text-gray-600")}>
+                      {p.name.charAt(0).toUpperCase()}
+                    </div>
+                    <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", cls)}>{label}</span>
+                  </div>
+                  <h3 className="font-semibold text-gray-800 text-sm leading-tight mb-0.5">{p.name}</h3>
+                  <p className="text-xs text-gray-400 mb-1">{p.sku} · {p.category || "Uncategorized"}</p>
+                  {p.description && <p className="text-xs text-gray-400 mb-2 line-clamp-2">{p.description}</p>}
+                  <div className="flex items-end justify-between mt-3 pt-3 border-t border-gray-100">
+                    <div>
+                      <p className="text-base font-bold text-gray-900">{formatCurrency(p.price)}</p>
+                      {m !== null && (
+                        <p className={cn("text-xs", m >= 30 ? "text-green-600" : m >= 10 ? "text-yellow-600" : "text-red-500")}>{m}% margin</p>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <p className={cn("text-sm font-bold", isOut ? "text-red-600" : isLow ? "text-yellow-600" : "text-gray-700")}>{p.quantity}</p>
+                      <p className="text-xs text-gray-400">units</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-1.5 mt-3">
+                    <button
+                      onClick={() => setStockProduct(p)}
+                      className="flex-1 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium hover:bg-blue-100 transition-colors"
+                    >
+                      Stock
+                    </button>
+                    <button
+                      onClick={() => { setEditingProduct(p); setShowModal(true); }}
+                      className="flex-1 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-200 transition-colors"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(p)}
+                      className="py-1.5 px-2.5 bg-red-50 text-red-400 rounded-lg hover:bg-red-100 hover:text-red-600 transition-colors"
+                    >
+                      <TrashIcon size={12} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {showModal && (
+        <ProductFormModal
+          product={editingProduct}
+          onClose={() => { setShowModal(false); setEditingProduct(null); }}
+          onSave={handleSave}
+        />
+      )}
+
+      {stockProduct && (
+        <StockAdjustModal
+          product={stockProduct}
+          onClose={() => setStockProduct(null)}
+          onAdjust={(newQty) => { handleStockAdjust(stockProduct, newQty); setStockProduct(null); }}
+        />
+      )}
     </div>
   );
 }
