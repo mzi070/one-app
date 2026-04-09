@@ -398,3 +398,20 @@ export const useProfileStore = create<ProfileState>()(
     { name: "oneapp-profile" }
   )
 );
+// ─── Theme Store ──────────────────────────────────────────────────────────────
+interface ThemeState {
+  isDark: boolean;
+  toggleTheme: () => void;
+  setDark: (v: boolean) => void;
+}
+
+export const useThemeStore = create<ThemeState>()(
+  persist(
+    (set) => ({
+      isDark: false,
+      toggleTheme: () => set((state) => ({ isDark: !state.isDark })),
+      setDark: (v) => set({ isDark: v }),
+    }),
+    { name: "oneapp-theme" }
+  )
+);

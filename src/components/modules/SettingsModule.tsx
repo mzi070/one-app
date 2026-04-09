@@ -18,7 +18,7 @@ import {
   Briefcase,
   CalendarDays,
 } from "lucide-react";
-import { useSettingsStore, defaultSettings } from "@/store";
+import { useSettingsStore, defaultSettings, useThemeStore } from "@/store";
 import { cn } from "@/lib/utils";
 
 type SettingsTab = "general" | "pos" | "hr" | "notifications" | "appearance";
@@ -170,6 +170,7 @@ function SectionHeader({ icon: Icon, title, subtitle }: { icon: React.ElementTyp
 
 export default function SettingsModule() {
   const settings = useSettingsStore();
+  const { isDark, toggleTheme } = useThemeStore();
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
   const [saved, setSaved] = useState(false);
   const [draft, setDraft] = useState({ ...settings });
@@ -562,6 +563,32 @@ export default function SettingsModule() {
           {activeTab === "appearance" && (
             <div className="space-y-6">
               <SectionHeader icon={Palette} title="Appearance" subtitle="Customize the look and feel of your application" />
+
+              {/* Dark Mode */}
+              <div className="border-b border-gray-100 pb-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">Dark Mode</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Switch between light and dark interface</p>
+                  </div>
+                  <button
+                    onClick={toggleTheme}
+                    className={cn(
+                      "relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
+                      isDark ? "bg-blue-500" : "bg-gray-200"
+                    )}
+                    role="switch"
+                    aria-checked={isDark}
+                  >
+                    <span
+                      className={cn(
+                        "inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform",
+                        isDark ? "translate-x-6" : "translate-x-1"
+                      )}
+                    />
+                  </button>
+                </div>
+              </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-3">Accent Color</label>

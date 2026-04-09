@@ -14,7 +14,7 @@ const config: Record<
     bar: "bg-emerald-500",
     bg: "bg-white",
     border: "border-emerald-200",
-    title: "text-emerald-800",
+    title: "text-emerald-800 dark:text-emerald-300",
     icon2: "text-emerald-500",
   },
   error: {
@@ -22,7 +22,7 @@ const config: Record<
     bar: "bg-red-500",
     bg: "bg-white",
     border: "border-red-200",
-    title: "text-red-800",
+    title: "text-red-800 dark:text-red-300",
     icon2: "text-red-500",
   },
   warning: {
@@ -30,7 +30,7 @@ const config: Record<
     bar: "bg-amber-400",
     bg: "bg-white",
     border: "border-amber-200",
-    title: "text-amber-800",
+    title: "text-amber-800 dark:text-amber-300",
     icon2: "text-amber-500",
   },
   info: {
@@ -38,7 +38,7 @@ const config: Record<
     bar: "bg-blue-500",
     bg: "bg-white",
     border: "border-blue-200",
-    title: "text-blue-800",
+    title: "text-blue-800 dark:text-blue-300",
     icon2: "text-blue-500",
   },
 };
@@ -81,7 +81,7 @@ function Toast({ toast }: { toast: ToastItem }) {
       {/* Dismiss */}
       <button
         onClick={() => removeToast(toast.id)}
-        className="absolute top-3 right-3 p-0.5 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+        className="absolute top-3 right-3 p-0.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 transition-colors"
       >
         <X size={14} />
       </button>

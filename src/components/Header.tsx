@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useAppStore, useAuthStore, useProfileStore, useNotificationStore } from "@/store";
+import { useAppStore, useAuthStore, useProfileStore, useNotificationStore, useThemeStore } from "@/store";
 import NotificationPanel from "@/components/NotificationPanel";
 import {
   Menu,
@@ -13,6 +13,8 @@ import {
   ChevronDown,
   Activity,
   Shield,
+  Sun,
+  Moon,
 } from "lucide-react";
 
 const moduleTitles: Record<string, string> = {
@@ -30,6 +32,7 @@ export default function Header() {
   const { currentModule, toggleSidebar, setModule } = useAppStore();
   const { logout } = useAuthStore();
   const profile = useProfileStore();
+  const { isDark, toggleTheme } = useThemeStore();
   const { notifications } = useNotificationStore();
   const unreadCount = notifications.filter((n) => !n.read).length;
   const [showMenu, setShowMenu] = useState(false);
@@ -59,7 +62,7 @@ export default function Header() {
 
   return (
     <>
-    <header className="sticky top-0 z-30 bg-white border-b border-gray-200 px-4 py-3">
+    <header className="sticky top-0 z-30 bg-white border-b border-gray-200 px-4 py-3 dark:bg-gray-900 dark:border-gray-700">
       <div className="flex items-center justify-between">
         {/* Left */}
         <div className="flex items-center gap-3">
@@ -89,11 +92,20 @@ export default function Header() {
             )}
           </button>
 
+          {/* Dark mode toggle */}
+          <button
+            onClick={toggleTheme}
+            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-gray-600 dark:text-gray-300"
+            title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+          >
+            {isDark ? <Sun size={19} /> : <Moon size={19} />}
+          </button>
+
           {/* Settings shortcut */}
           <button
             onClick={() => setModule("settings")}
-            className={`p-2 rounded-lg hover:bg-gray-100 transition-colors ${
-              currentModule === "settings" ? "text-indigo-600 bg-indigo-50" : "text-gray-600"
+            className={`p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
+              currentModule === "settings" ? "text-indigo-600 bg-indigo-50" : "text-gray-600 dark:text-gray-300"
             }`}
             title="Settings"
           >

@@ -91,3 +91,59 @@ body {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+/* ── Dark mode (class-based, Tailwind v4) ──────────────────────────────────── */
+@custom-variant dark (&:where(.dark, .dark *));
+
+.dark {
+  color-scheme: dark;
+}
+
+/* These rules are NOT inside a CSS @layer, so they win the cascade over      */
+/* Tailwind's @layer utilities — no !important needed.                         */
+
+/* Backgrounds */
+.dark .bg-white         { background-color: #1f2937; }   /* → gray-800  */
+.dark .bg-gray-50       { background-color: #111827; }   /* → gray-900  */
+.dark .bg-gray-100      { background-color: #374151; }   /* → gray-700  */
+.dark .bg-gray-200      { background-color: #4b5563; }   /* → gray-600  */
+
+/* Text */
+.dark .text-gray-900    { color: #f9fafb; }
+.dark .text-gray-800    { color: #f3f4f6; }
+.dark .text-gray-700    { color: #d1d5db; }
+.dark .text-gray-600    { color: #9ca3af; }
+.dark .text-gray-500    { color: #6b7280; }
+
+/* Borders */
+.dark .border-gray-100  { border-color: #374151; }
+.dark .border-gray-200  { border-color: #374151; }
+.dark .border-gray-300  { border-color: #4b5563; }
+
+/* Divide utilities */
+.dark .divide-gray-50 > * + *   { border-color: #374151; }
+.dark .divide-gray-100 > * + *  { border-color: #374151; }
+.dark .divide-gray-200 > * + *  { border-color: #374151; }
+
+/* Hover backgrounds */
+.dark .hover\:bg-gray-50:hover  { background-color: #374151; }
+.dark .hover\:bg-gray-100:hover { background-color: #4b5563; }
+
+/* Form elements */
+.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+.dark select,
+.dark textarea {
+  background-color: #374151;
+  color: #f3f4f6;
+  border-color: #4b5563;
+}
+
+.dark ::placeholder { color: #6b7280; }
+
+/* Scrollbar dark */
+.dark ::-webkit-scrollbar-thumb       { background: #4b5563; }
+.dark ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+
+/* Shadows */
+.dark .shadow-xl  { box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.5), 0 8px 10px -6px rgb(0 0 0 / 0.4); }
+.dark .shadow-2xl { box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.6); }
