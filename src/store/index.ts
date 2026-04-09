@@ -166,6 +166,79 @@ export const useAppStore = create<AppState>((set) => ({
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
 }));
 
+// ─── POS Customer Store ───────────────────────────────────────────────────────
+export interface POSCustomer {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  address: string;
+  notes: string;
+  creditBalance: number;
+  totalSpent: number;
+  visitCount: number;
+  lastVisit: string | null;
+  joinedAt: string;
+}
+
+interface POSCustomerState {
+  customers: POSCustomer[];
+  addCustomer: (c: Omit<POSCustomer, "id" | "totalSpent" | "visitCount" | "lastVisit" | "joinedAt">) => POSCustomer;
+  updateCustomer: (id: string, updates: Partial<POSCustomer>) => void;
+  deleteCustomer: (id: string) => void;
+  recordPurchase: (id: string, amount: number, timestamp: string) => void;
+  adjustCredit: (id: string, delta: number) => void;
+}
+
+const defaultCustomers: POSCustomer[] = [
+  { id: "cust-1", name: "John Smith", email: "john@example.com", phone: "+1-234-5678", address: "123 Main St, New York", notes: "Prefers card payment", creditBalance: 150.00, totalSpent: 3240.50, visitCount: 28, lastVisit: new Date(Date.now() - 2 * 86400000).toISOString(), joinedAt: "2024-03-15T09:00:00.000Z" },
+  { id: "cust-2", name: "Jane Doe", email: "jane@example.com", phone: "+1-345-6789", address: "456 Oak Ave, Los Angeles", notes: "", creditBalance: 0, totalSpent: 890.00, visitCount: 11, lastVisit: new Date(Date.now() - 7 * 86400000).toISOString(), joinedAt: "2024-06-20T11:30:00.000Z" },
+  { id: "cust-3", name: "Acme Corp", email: "billing@acme.com", phone: "+1-456-7890", address: "789 Business Blvd, Chicago", notes: "Net-30 terms. Bulk buyer.", creditBalance: 2450.00, totalSpent: 18750.00, visitCount: 64, lastVisit: new Date(Date.now() - 1 * 86400000).toISOString(), joinedAt: "2023-11-01T08:00:00.000Z" },
+  { id: "cust-4", name: "Sarah Lee", email: "sarah@example.com", phone: "+1-567-8901", address: "321 Pine Rd, Houston", notes: "Birthday: March 12", creditBalance: 75.00, totalSpent: 540.25, visitCount: 9, lastVisit: new Date(Date.now() - 14 * 86400000).toISOString(), joinedAt: "2025-01-08T14:00:00.000Z" },
+  { id: "cust-5", name: "Tech Solutions Ltd", email: "orders@techsol.com", phone: "+1-678-9012", address: "654 Innovation Dr, San Francisco", notes: "IT equipment buyer", creditBalance: 0, totalSpent: 6500.00, visitCount: 22, lastVisit: new Date(Date.now() - 3 * 86400000).toISOString(), joinedAt: "2024-02-14T10:00:00.000Z" },
+];
+
+export const usePOSCustomerStore = create<POSCustomerState>()(
+  persist(
+    (set) => ({
+      customers: defaultCustomers,
+      addCustomer: (c) => {
+        const newCustomer: POSCustomer = {
+          ...c,
+          id: `cust-${Date.now()}`,
+          totalSpent: 0,
+          visitCount: 0,
+          lastVisit: null,
+          joinedAt: new Date().toISOString(),
+        };
+        set((state) => ({ customers: [newCustomer, ...state.customers] }));
+        return newCustomer;
+      },
+      updateCustomer: (id, updates) =>
+        set((state) => ({
+          customers: state.customers.map((c) => (c.id === id ? { ...c, ...updates } : c)),
+        })),
+      deleteCustomer: (id) =>
+        set((state) => ({ customers: state.customers.filter((c) => c.id !== id) })),
+      recordPurchase: (id, amount, timestamp) =>
+        set((state) => ({
+          customers: state.customers.map((c) =>
+            c.id === id
+              ? { ...c, totalSpent: c.totalSpent + amount, visitCount: c.visitCount + 1, lastVisit: timestamp }
+              : c
+          ),
+        })),
+      adjustCredit: (id, delta) =>
+        set((state) => ({
+          customers: state.customers.map((c) =>
+            c.id === id ? { ...c, creditBalance: Math.max(0, c.creditBalance + delta) } : c
+          ),
+        })),
+    }),
+    { name: "oneapp-pos-customers" }
+  )
+);
+
 // ─── POS Sales History Store ──────────────────────────────────────────────────
 export interface SaleRecord {
   id: string;
@@ -176,6 +249,8 @@ export interface SaleRecord {
   total: number;
   paymentMethod: string;
   itemCount: number;
+  customerId?: string;
+  customerName?: string;
 }
 
 interface POSSalesState {

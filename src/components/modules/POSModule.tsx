@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { usePOSStore, usePOSSalesStore, type SaleRecord, notify } from "@/store";
+import { usePOSStore, usePOSSalesStore, usePOSCustomerStore, type SaleRecord, type POSCustomer, notify } from "@/store";
 import {
   Search,
   Plus,
@@ -25,6 +25,17 @@ import {
   Calendar,
   Wallet,
   ArrowLeft,
+  UserPlus,
+  UserCheck,
+  Phone,
+  Mail,
+  MapPin,
+  Edit3,
+  Trash2 as TrashIcon,
+  Star,
+  Clock,
+  ChevronRight,
+  AlertCircle,
 } from "lucide-react";
 import { formatCurrency, cn } from "@/lib/utils";
 
@@ -82,6 +93,12 @@ export default function POSModule() {
   } = usePOSStore();
 
   const { recordSale } = usePOSSalesStore();
+  const { customers, recordPurchase } = usePOSCustomerStore();
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const [showCustomerPicker, setShowCustomerPicker] = useState(false);
+  const [customerSearch, setCustomerSearch] = useState("");
+
+  const selectedCustomer = customers.find((c) => c.id === selectedCustomerId) ?? null;
 
   const loadProducts = useCallback(async () => {
     try {
@@ -112,17 +129,26 @@ export default function POSModule() {
     const total = getTotal() + tax;
     const itemCount = cart.reduce((s, i) => s + i.quantity, 0);
 
+    const now = new Date().toISOString();
+
     // Record sale in local history
     recordSale({
       id: `TXN-${Date.now()}`,
-      timestamp: new Date().toISOString(),
+      timestamp: now,
       items: cart.map((c) => ({ name: c.name, productId: c.productId, quantity: c.quantity, price: c.price })),
       subtotal,
       tax,
       total,
       paymentMethod,
       itemCount,
+      customerId: selectedCustomer?.id,
+      customerName: selectedCustomer?.name,
     });
+
+    // Update customer stats
+    if (selectedCustomer) {
+      recordPurchase(selectedCustomer.id, total, now);
+    }
 
     try {
       await fetch("/api/sales", {
@@ -161,6 +187,7 @@ export default function POSModule() {
     }
     setTimeout(() => {
       clearCart();
+      setSelectedCustomerId(null);
       setCheckoutDone(false);
       setShowCheckout(false);
     }, 2000);
@@ -169,7 +196,7 @@ export default function POSModule() {
   const taxAmount = getSubtotal() * 0.05;
 
   if (view === "products") return <ProductsManager products={products} onBack={() => setView("sale")} onRefresh={loadProducts} />;
-  if (view === "customers") return <CustomersView onBack={() => setView("sale")} />;
+  if (view === "customers") return <CustomersView onBack={() => setView("sale")} onSelectForSale={(id) => { setSelectedCustomerId(id); setView("sale"); }} />;
   if (view === "reports") return <SalesReports onBack={() => setView("sale")} />;
 
   return (
@@ -258,6 +285,75 @@ export default function POSModule() {
             <button onClick={clearCart} className="text-xs text-red-500 hover:text-red-600">
               Clear All
             </button>
+          )}
+        </div>
+
+        {/* Customer Selector */}
+        <div className="border-b px-3 py-2">
+          {selectedCustomer ? (
+            <div className="flex items-center justify-between bg-green-50 rounded-lg px-2.5 py-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <UserCheck size={15} className="text-green-600 shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-green-800 truncate">{selectedCustomer.name}</p>
+                  {selectedCustomer.creditBalance > 0 && (
+                    <p className="text-xs text-green-600">Credit: {formatCurrency(selectedCustomer.creditBalance)}</p>
+                  )}
+                </div>
+              </div>
+              <button onClick={() => setSelectedCustomerId(null)} className="text-green-400 hover:text-green-700 ml-1 shrink-0">
+                <X size={14} />
+              </button>
+            </div>
+          ) : (
+            <div className="relative">
+              <button
+                onClick={() => { setShowCustomerPicker((v) => !v); setCustomerSearch(""); }}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 border border-dashed border-gray-300 rounded-lg text-xs text-gray-400 hover:border-green-400 hover:text-green-600 transition-colors"
+              >
+                <UserPlus size={14} /> Add customer to sale
+              </button>
+              {showCustomerPicker && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl z-20 overflow-hidden">
+                  <div className="p-2 border-b">
+                    <div className="relative">
+                      <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <input
+                        autoFocus
+                        type="text"
+                        placeholder="Search customers..."
+                        value={customerSearch}
+                        onChange={(e) => setCustomerSearch(e.target.value)}
+                        className="w-full pl-7 pr-2 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:ring-1 focus:ring-green-500"
+                      />
+                    </div>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto">
+                    {customers
+                      .filter((c) => c.name.toLowerCase().includes(customerSearch.toLowerCase()) || c.email.toLowerCase().includes(customerSearch.toLowerCase()))
+                      .slice(0, 8)
+                      .map((c) => (
+                        <button
+                          key={c.id}
+                          onClick={() => { setSelectedCustomerId(c.id); setShowCustomerPicker(false); }}
+                          className="w-full flex items-center justify-between px-3 py-2 hover:bg-gray-50 text-left"
+                        >
+                          <div>
+                            <p className="text-xs font-medium text-gray-800">{c.name}</p>
+                            <p className="text-xs text-gray-400">{c.email}</p>
+                          </div>
+                          {c.creditBalance > 0 && (
+                            <span className="text-xs text-green-600 font-medium shrink-0 ml-2">{formatCurrency(c.creditBalance)}</span>
+                          )}
+                        </button>
+                      ))}
+                    {customers.filter((c) => c.name.toLowerCase().includes(customerSearch.toLowerCase())).length === 0 && (
+                      <p className="text-xs text-gray-400 text-center py-4">No customers found</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
@@ -391,8 +487,14 @@ export default function POSModule() {
                     <span>Total</span><span>{formatCurrency(getTotal() + taxAmount)}</span>
                   </div>
                 </div>
-                <div className="mt-3 text-sm text-gray-500">
-                  Payment: <span className="capitalize font-medium">{paymentMethod}</span>
+                <div className="mt-3 space-y-1 text-sm text-gray-500">
+                  <div>Payment: <span className="capitalize font-medium text-gray-700">{paymentMethod}</span></div>
+                  {selectedCustomer && (
+                    <div className="flex items-center gap-1.5">
+                      <UserCheck size={14} className="text-green-600" />
+                      <span className="font-medium text-gray-700">{selectedCustomer.name}</span>
+                    </div>
+                  )}
                 </div>
                 <button
                   onClick={handleCheckout}
@@ -531,41 +633,514 @@ function AddProductModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
   );
 }
 
-function CustomersView({ onBack }: { onBack: () => void }) {
-  const [customers, setCustomers] = useState<Array<{ id: string; name: string; email: string; phone: string; credit: number }>>([
-    { id: "1", name: "John Smith", email: "john@example.com", phone: "+1-234-5678", credit: 150.00 },
-    { id: "2", name: "Jane Doe", email: "jane@example.com", phone: "+1-345-6789", credit: 0 },
-    { id: "3", name: "Acme Corp", email: "billing@acme.com", phone: "+1-456-7890", credit: 2450.00 },
-  ]);
+// ─── Customer Management ────────────────────────────────────────────────────
+interface CustomerFormData {
+  name: string;
+  email: string;
+  phone: string;
+  address: string;
+  notes: string;
+  creditBalance: number;
+}
+
+const emptyForm: CustomerFormData = { name: "", email: "", phone: "", address: "", notes: "", creditBalance: 0 };
+
+function CustomerModal({
+  customer,
+  onClose,
+  onSave,
+}: {
+  customer: POSCustomer | null;
+  onClose: () => void;
+  onSave: (data: CustomerFormData) => void;
+}) {
+  const [form, setForm] = useState<CustomerFormData>(
+    customer
+      ? { name: customer.name, email: customer.email, phone: customer.phone, address: customer.address, notes: customer.notes, creditBalance: customer.creditBalance }
+      : emptyForm
+  );
+
+  const set = (k: keyof CustomerFormData, v: string | number) => setForm((prev) => ({ ...prev, [k]: v }));
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.name.trim()) return;
+    onSave(form);
+  };
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <div className="flex items-center gap-3 mb-6">
-        <button onClick={onBack} className="text-sm text-gray-500 hover:text-gray-700">&larr; Back</button>
-        <h2 className="text-xl font-bold">Customer Management</h2>
-      </div>
-      <div className="bg-white rounded-xl border overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b">
-            <tr>
-              <th className="text-left px-4 py-3">Name</th>
-              <th className="text-left px-4 py-3">Email</th>
-              <th className="text-left px-4 py-3">Phone</th>
-              <th className="text-right px-4 py-3">Credit Balance</th>
-            </tr>
-          </thead>
-          <tbody>
-            {customers.map((c) => (
-              <tr key={c.id} className="border-b hover:bg-gray-50">
-                <td className="px-4 py-3 font-medium">{c.name}</td>
-                <td className="px-4 py-3 text-gray-500">{c.email}</td>
-                <td className="px-4 py-3 text-gray-500">{c.phone}</td>
-                <td className="px-4 py-3 text-right font-medium">{formatCurrency(c.credit)}</td>
-              </tr>
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <form
+        onSubmit={handleSubmit}
+        className="bg-white rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-bold text-gray-900">{customer ? "Edit Customer" : "Add Customer"}</h3>
+          <button type="button" onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3">
+          {([
+            { key: "name", label: "Full Name *", placeholder: "John Smith", type: "text" },
+            { key: "email", label: "Email", placeholder: "john@example.com", type: "email" },
+            { key: "phone", label: "Phone", placeholder: "+1-234-5678", type: "tel" },
+            { key: "address", label: "Address", placeholder: "123 Main St, City", type: "text" },
+          ] as const).map((f) => (
+            <div key={f.key}>
+              <label className="text-xs font-medium text-gray-600 mb-1 block">{f.label}</label>
+              <input
+                type={f.type}
+                placeholder={f.placeholder}
+                value={form[f.key]}
+                onChange={(e) => set(f.key, e.target.value)}
+                required={f.key === "name"}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-green-500 outline-none"
+              />
+            </div>
+          ))}
+          <div>
+            <label className="text-xs font-medium text-gray-600 mb-1 block">Credit Balance ($)</label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={form.creditBalance}
+              onChange={(e) => set("creditBalance", parseFloat(e.target.value) || 0)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-green-500 outline-none"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-600 mb-1 block">Notes</label>
+            <textarea
+              rows={2}
+              placeholder="Any special notes..."
+              value={form.notes}
+              onChange={(e) => set("notes", e.target.value)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-green-500 outline-none resize-none"
+            />
+          </div>
+        </div>
+
+        <div className="flex gap-2 pt-1">
+          <button type="button" onClick={onClose} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">
+            Cancel
+          </button>
+          <button type="submit" className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-semibold">
+            {customer ? "Save Changes" : "Add Customer"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function CustomerDetailPanel({
+  customer,
+  salesHistory,
+  onClose,
+  onEdit,
+  onDelete,
+  onSelectForSale,
+  onAdjustCredit,
+}: {
+  customer: POSCustomer;
+  salesHistory: SaleRecord[];
+  onClose: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onSelectForSale: () => void;
+  onAdjustCredit: (delta: number) => void;
+}) {
+  const [creditAdjust, setCreditAdjust] = useState("");
+  const customerSales = salesHistory
+    .filter((s) => s.customerId === customer.id)
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .slice(0, 20);
+
+  const tierLabel = customer.totalSpent >= 10000 ? "Platinum" : customer.totalSpent >= 2000 ? "Gold" : customer.totalSpent >= 500 ? "Silver" : "Standard";
+  const tierColor = customer.totalSpent >= 10000 ? "text-purple-600 bg-purple-50" : customer.totalSpent >= 2000 ? "text-yellow-600 bg-yellow-50" : customer.totalSpent >= 500 ? "text-gray-500 bg-gray-100" : "text-blue-600 bg-blue-50";
+
+  const handleCredit = (sign: 1 | -1) => {
+    const val = parseFloat(creditAdjust);
+    if (!val || val <= 0) return;
+    onAdjustCredit(sign * val);
+    setCreditAdjust("");
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-40 flex justify-end" onClick={onClose}>
+      <div className="h-full w-full max-w-md bg-white shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()} style={{ animation: "fadeInUp 0.2s ease" }}>
+        {/* Header */}
+        <div className="p-5 border-b border-gray-100 flex items-start justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-bold text-lg">
+              {customer.name.charAt(0).toUpperCase()}
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-900">{customer.name}</h3>
+              <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", tierColor)}>{tierLabel}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            <button onClick={onEdit} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500"><Edit3 size={15} /></button>
+            <button onClick={onDelete} className="p-2 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500"><TrashIcon size={15} /></button>
+            <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400"><X size={16} /></button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {/* Contact Info */}
+          <div className="p-4 border-b border-gray-100 space-y-2">
+            {customer.email && (
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <Mail size={14} className="text-gray-400 shrink-0" />{customer.email}
+              </div>
+            )}
+            {customer.phone && (
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <Phone size={14} className="text-gray-400 shrink-0" />{customer.phone}
+              </div>
+            )}
+            {customer.address && (
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <MapPin size={14} className="text-gray-400 shrink-0" />{customer.address}
+              </div>
+            )}
+            {customer.notes && (
+              <div className="flex items-start gap-2 text-sm text-gray-500 bg-amber-50 rounded-lg p-2 mt-1">
+                <AlertCircle size={14} className="text-amber-500 shrink-0 mt-0.5" />{customer.notes}
+              </div>
+            )}
+          </div>
+
+          {/* Stats */}
+          <div className="grid grid-cols-3 divide-x border-b border-gray-100">
+            {[
+              { label: "Total Spent", value: formatCurrency(customer.totalSpent) },
+              { label: "Visits", value: String(customer.visitCount) },
+              { label: "Avg Order", value: customer.visitCount > 0 ? formatCurrency(customer.totalSpent / customer.visitCount) : "$0" },
+            ].map((s) => (
+              <div key={s.label} className="p-3 text-center">
+                <p className="text-sm font-bold text-gray-900">{s.value}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{s.label}</p>
+              </div>
             ))}
-          </tbody>
-        </table>
+          </div>
+
+          {/* Credit Balance */}
+          <div className="p-4 border-b border-gray-100">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                <Wallet size={14} className="text-green-600" /> Credit Balance
+              </p>
+              <p className="text-lg font-bold text-green-600">{formatCurrency(customer.creditBalance)}</p>
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Amount"
+                value={creditAdjust}
+                onChange={(e) => setCreditAdjust(e.target.value)}
+                className="flex-1 px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-1 focus:ring-green-500"
+              />
+              <button onClick={() => handleCredit(1)} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700">+ Add</button>
+              <button onClick={() => handleCredit(-1)} className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-200">- Use</button>
+            </div>
+          </div>
+
+          {/* Purchase History */}
+          <div className="p-4">
+            <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
+              <Clock size={14} className="text-gray-400" /> Purchase History
+            </p>
+            {customerSales.length === 0 ? (
+              <p className="text-xs text-gray-400 text-center py-6">No purchases recorded yet</p>
+            ) : (
+              <div className="space-y-2">
+                {customerSales.map((s) => {
+                  const d = new Date(s.timestamp);
+                  return (
+                    <div key={s.id} className="flex items-center justify-between py-2 border-b border-gray-50">
+                      <div>
+                        <p className="text-xs font-medium text-gray-700">{s.id}</p>
+                        <p className="text-xs text-gray-400">{d.toLocaleDateString()} · {d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
+                        <p className="text-xs text-gray-400">{s.itemCount} items · <span className="capitalize">{s.paymentMethod}</span></p>
+                      </div>
+                      <p className="text-sm font-semibold text-gray-800">{formatCurrency(s.total)}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer Action */}
+        <div className="p-4 border-t border-gray-100">
+          <button
+            onClick={onSelectForSale}
+            className="w-full py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-semibold flex items-center justify-center gap-2"
+          >
+            <ShoppingBag size={16} /> Start Sale for {customer.name.split(" ")[0]}
+          </button>
+        </div>
       </div>
+    </div>
+  );
+}
+
+function CustomersView({ onBack, onSelectForSale }: { onBack: () => void; onSelectForSale: (id: string) => void }) {
+  const { customers, addCustomer, updateCustomer, deleteCustomer, adjustCredit } = usePOSCustomerStore();
+  const { salesHistory } = usePOSSalesStore();
+  const [search, setSearch] = useState("");
+  const [showModal, setShowModal] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState<POSCustomer | null>(null);
+  const [detailCustomer, setDetailCustomer] = useState<POSCustomer | null>(null);
+  const [sortBy, setSortBy] = useState<"name" | "spent" | "visits" | "credit">("spent");
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return customers
+      .filter((c) => c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q) || c.phone.includes(q))
+      .sort((a, b) => {
+        if (sortBy === "name") return a.name.localeCompare(b.name);
+        if (sortBy === "spent") return b.totalSpent - a.totalSpent;
+        if (sortBy === "visits") return b.visitCount - a.visitCount;
+        return b.creditBalance - a.creditBalance;
+      });
+  }, [customers, search, sortBy]);
+
+  const totalRevenue = customers.reduce((s, c) => s + c.totalSpent, 0);
+  const totalCredit = customers.reduce((s, c) => s + c.creditBalance, 0);
+
+  const handleSave = (data: CustomerFormData) => {
+    if (editingCustomer) {
+      updateCustomer(editingCustomer.id, data);
+    } else {
+      addCustomer(data);
+    }
+    setShowModal(false);
+    setEditingCustomer(null);
+  };
+
+  const handleDelete = (c: POSCustomer) => {
+    if (confirm(`Delete customer "${c.name}"? This cannot be undone.`)) {
+      deleteCustomer(c.id);
+      setDetailCustomer(null);
+    }
+  };
+
+  const handleEdit = (c: POSCustomer) => {
+    setEditingCustomer(c);
+    setShowModal(true);
+    setDetailCustomer(null);
+  };
+
+  const tierLabel = (spent: number) =>
+    spent >= 10000 ? "Platinum" : spent >= 2000 ? "Gold" : spent >= 500 ? "Silver" : "Standard";
+  const tierDot = (spent: number) =>
+    spent >= 10000 ? "bg-purple-500" : spent >= 2000 ? "bg-yellow-400" : spent >= 500 ? "bg-gray-400" : "bg-blue-400";
+
+  return (
+    <div className="flex-1 overflow-y-auto bg-gray-50">
+      <div className="max-w-6xl mx-auto p-6 space-y-5">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <button onClick={onBack} className="p-2 rounded-lg hover:bg-gray-200 text-gray-500 transition-colors">
+              <ArrowLeft size={18} />
+            </button>
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Customer Management</h2>
+              <p className="text-sm text-gray-500">{customers.length} customers · {formatCurrency(totalRevenue)} lifetime revenue</p>
+            </div>
+          </div>
+          <button
+            onClick={() => { setEditingCustomer(null); setShowModal(true); }}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
+          >
+            <UserPlus size={16} /> Add Customer
+          </button>
+        </div>
+
+        {/* KPI Strip */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            { label: "Total Customers", value: String(customers.length), icon: Users, color: "bg-blue-50 text-blue-600" },
+            { label: "Lifetime Revenue", value: formatCurrency(totalRevenue), icon: TrendingUp, color: "bg-green-50 text-green-600" },
+            { label: "Credit Outstanding", value: formatCurrency(totalCredit), icon: Wallet, color: "bg-orange-50 text-orange-600" },
+            { label: "Avg Spend", value: customers.length > 0 ? formatCurrency(totalRevenue / customers.length) : "$0", icon: Star, color: "bg-purple-50 text-purple-600" },
+          ].map((k) => {
+            const Icon = k.icon;
+            return (
+              <div key={k.label} className="bg-white rounded-xl border border-gray-200 p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center", k.color)}>
+                    <Icon size={14} />
+                  </div>
+                  <p className="text-xs text-gray-500">{k.label}</p>
+                </div>
+                <p className="text-lg font-bold text-gray-900">{k.value}</p>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Search & Sort */}
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex-1 relative">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search by name, email or phone..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 border border-gray-200 bg-white rounded-lg text-sm focus:ring-2 focus:ring-green-500 outline-none"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500 whitespace-nowrap">Sort by:</span>
+            {(["spent", "visits", "name", "credit"] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setSortBy(s)}
+                className={cn("px-2.5 py-1.5 rounded-lg text-xs font-medium capitalize transition-colors", sortBy === s ? "bg-green-600 text-white" : "bg-white border border-gray-200 text-gray-500 hover:border-green-400")}
+              >
+                {s === "spent" ? "Revenue" : s === "visits" ? "Visits" : s === "credit" ? "Credit" : "Name"}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Customer Table */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          {filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+              <Users size={40} className="opacity-30 mb-3" />
+              <p className="text-sm">No customers found</p>
+              <button onClick={() => { setEditingCustomer(null); setShowModal(true); }} className="mt-3 text-sm text-green-600 hover:text-green-700">+ Add your first customer</button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-100">
+                  <tr>
+                    <th className="text-left px-4 py-3 font-medium text-gray-500 text-xs">Customer</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-500 text-xs hidden sm:table-cell">Contact</th>
+                    <th className="text-center px-4 py-3 font-medium text-gray-500 text-xs">Tier</th>
+                    <th className="text-right px-4 py-3 font-medium text-gray-500 text-xs">Total Spent</th>
+                    <th className="text-right px-4 py-3 font-medium text-gray-500 text-xs hidden md:table-cell">Visits</th>
+                    <th className="text-right px-4 py-3 font-medium text-gray-500 text-xs">Credit</th>
+                    <th className="text-center px-4 py-3 font-medium text-gray-500 text-xs hidden lg:table-cell">Last Visit</th>
+                    <th className="px-4 py-3" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((c) => {
+                    const tier = tierLabel(c.totalSpent);
+                    const dot = tierDot(c.totalSpent);
+                    const lastVisit = c.lastVisit ? new Date(c.lastVisit).toLocaleDateString() : "—";
+                    return (
+                      <tr
+                        key={c.id}
+                        className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors"
+                        onClick={() => setDetailCustomer(c)}
+                      >
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-bold text-xs shrink-0">
+                              {c.name.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <p className="font-medium text-gray-800">{c.name}</p>
+                              <p className="text-xs text-gray-400">Since {new Date(c.joinedAt).toLocaleDateString()}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 hidden sm:table-cell">
+                          <p className="text-xs text-gray-600">{c.email || "—"}</p>
+                          <p className="text-xs text-gray-400">{c.phone || "—"}</p>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <span className="inline-flex items-center gap-1 text-xs">
+                            <span className={cn("w-2 h-2 rounded-full", dot)} />{tier}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right font-semibold text-gray-800">{formatCurrency(c.totalSpent)}</td>
+                        <td className="px-4 py-3 text-right text-gray-600 hidden md:table-cell">{c.visitCount}</td>
+                        <td className="px-4 py-3 text-right">
+                          {c.creditBalance > 0 ? (
+                            <span className="text-green-600 font-medium">{formatCurrency(c.creditBalance)}</span>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-center text-xs text-gray-400 hidden lg:table-cell">{lastVisit}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1 justify-end" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onClick={() => { onSelectForSale(c.id); }}
+                              className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
+                              title="Start sale"
+                            >
+                              <ShoppingBag size={13} />
+                            </button>
+                            <button
+                              onClick={() => handleEdit(c)}
+                              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors"
+                              title="Edit"
+                            >
+                              <Edit3 size={13} />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(c)}
+                              className="p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors"
+                              title="Delete"
+                            >
+                              <TrashIcon size={13} />
+                            </button>
+                            <ChevronRight size={14} className="text-gray-300" />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Add/Edit Modal */}
+      {showModal && (
+        <CustomerModal
+          customer={editingCustomer}
+          onClose={() => { setShowModal(false); setEditingCustomer(null); }}
+          onSave={handleSave}
+        />
+      )}
+
+      {/* Detail Panel */}
+      {detailCustomer && (
+        <CustomerDetailPanel
+          customer={detailCustomer}
+          salesHistory={salesHistory}
+          onClose={() => setDetailCustomer(null)}
+          onEdit={() => handleEdit(detailCustomer)}
+          onDelete={() => handleDelete(detailCustomer)}
+          onSelectForSale={() => { onSelectForSale(detailCustomer.id); setDetailCustomer(null); }}
+          onAdjustCredit={(delta) => {
+            adjustCredit(detailCustomer.id, delta);
+            setDetailCustomer((prev) => prev ? { ...prev, creditBalance: Math.max(0, prev.creditBalance + delta) } : null);
+          }}
+        />
+      )}
     </div>
   );
 }
