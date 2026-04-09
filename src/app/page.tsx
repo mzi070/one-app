@@ -28,7 +28,7 @@ export default function Home() {
 
   if (!mounted || !isAuthenticated) {
     return (
-      <div className="h-screen flex items-center justify-center bg-gray-50">
+      <div className="h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div
           className="w-9 h-9 rounded-full border-2 border-gray-900 border-t-transparent"
           style={{ animation: "spin 0.7s linear infinite" }}
@@ -51,7 +51,7 @@ export default function Home() {
   };
 
   return (
-    <div className="h-screen flex overflow-hidden bg-gray-50">
+    <div className="h-screen flex overflow-hidden bg-gray-50 dark:bg-gray-900">
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header />
