@@ -12,6 +12,7 @@ import AccountingModule from "@/components/modules/AccountingModule";
 import PDFToolsModule from "@/components/modules/PDFToolsModule";
 import SettingsModule from "@/components/modules/SettingsModule";
 import ProfileModule from "@/components/modules/ProfileModule";
+import ToastContainer from "@/components/ToastContainer";
 
 export default function Home() {
   const router = useRouter();
@@ -56,6 +57,7 @@ export default function Home() {
         <Header />
         <main className="flex-1 overflow-y-auto">{renderModule()}</main>
       </div>
+      <ToastContainer />
     </div>
   );
 }

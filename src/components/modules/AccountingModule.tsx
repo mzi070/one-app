@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { notify } from "@/store";
 import {
   DollarSign,
   FileText,
@@ -45,7 +46,7 @@ const chartOfAccounts = [
   { code: "5300", name: "Utilities Expense", type: "Expense", balance: 2100.00 },
 ];
 
-const invoices = [
+const initialInvoices = [
   { id: "INV-2026-001", customer: "Acme Corp", amount: 12500.00, status: "paid", dueDate: "2026-03-15", paidAt: "2026-03-12" },
   { id: "INV-2026-002", customer: "Tech Solutions", amount: 8750.00, status: "paid", dueDate: "2026-03-20", paidAt: "2026-03-18" },
   { id: "INV-2026-003", customer: "Global Inc", amount: 15200.00, status: "sent", dueDate: "2026-04-15", paidAt: null },
@@ -55,7 +56,7 @@ const invoices = [
   { id: "INV-2026-007", customer: "Alpha LLC", amount: 4500.00, status: "paid", dueDate: "2026-03-28", paidAt: "2026-03-25" },
 ];
 
-const expenses = [
+const initialExpenses = [
   { id: "EXP-001", category: "Office Supplies", description: "Printer paper and toner", amount: 245.00, date: "2026-04-05", vendor: "OfficeMax", status: "approved" },
   { id: "EXP-002", category: "Software", description: "Monthly SaaS subscriptions", amount: 1200.00, date: "2026-04-01", vendor: "Various", status: "approved" },
   { id: "EXP-003", category: "Travel", description: "Client meeting - flight & hotel", amount: 890.00, date: "2026-04-03", vendor: "Delta Airlines", status: "pending" },
@@ -77,6 +78,58 @@ export default function AccountingModule() {
   const [view, setView] = useState<AccView>("overview");
   const [showCreateInvoice, setShowCreateInvoice] = useState(false);
   const [showAddExpense, setShowAddExpense] = useState(false);
+  const [invoices, setInvoices] = useState(initialInvoices);
+  const [expenses, setExpenses] = useState(initialExpenses);
+
+  const handleSendInvoice = (id: string) => {
+    const inv = invoices.find((i) => i.id === id);
+    if (!inv) return;
+    setInvoices((prev) => prev.map((i) => i.id === id ? { ...i, status: "sent" } : i));
+    notify({
+      title: "Invoice Sent",
+      message: `Invoice ${inv.id} for ${inv.customer} (${formatCurrency(inv.amount)}) has been sent.`,
+      category: "accounting",
+      priority: "success",
+      actionLabel: "View Invoices",
+      actionModule: "accounting",
+    });
+  };
+
+  const handleApproveExpense = (id: string) => {
+    const exp = expenses.find((e) => e.id === id);
+    if (!exp) return;
+    setExpenses((prev) => prev.map((e) => e.id === id ? { ...e, status: "approved" } : e));
+    notify({
+      title: "Expense Approved",
+      message: `${exp.description} (${formatCurrency(exp.amount)}) from ${exp.vendor} has been approved.`,
+      category: "accounting",
+      priority: "success",
+      actionLabel: "View Expenses",
+      actionModule: "accounting",
+    });
+  };
+
+  const handleInvoiceCreated = (customer: string, amount: number) => {
+    notify({
+      title: "Invoice Created",
+      message: `New invoice for ${customer} (${formatCurrency(amount)}) has been created as a draft.`,
+      category: "accounting",
+      priority: "info",
+      actionLabel: "View Invoices",
+      actionModule: "accounting",
+    });
+  };
+
+  const handleExpenseAdded = (description: string, amount: number) => {
+    notify({
+      title: "Expense Submitted",
+      message: `${description} (${formatCurrency(amount)}) has been submitted for approval.`,
+      category: "accounting",
+      priority: "info",
+      actionLabel: "View Expenses",
+      actionModule: "accounting",
+    });
+  };
 
   const navItems: { id: AccView; label: string; icon: React.ElementType }[] = [
     { id: "overview", label: "Overview", icon: PieChart },
@@ -109,15 +162,15 @@ export default function AccountingModule() {
 
       <div className="flex-1 overflow-y-auto bg-gray-50 p-6">
         {view === "overview" && <AccOverview onNavigate={setView} />}
-        {view === "invoices" && <InvoicesView onCreateNew={() => setShowCreateInvoice(true)} />}
-        {view === "expenses" && <ExpensesView onAddNew={() => setShowAddExpense(true)} />}
+        {view === "invoices" && <InvoicesView invoices={invoices} onCreateNew={() => setShowCreateInvoice(true)} onSend={handleSendInvoice} />}
+        {view === "expenses" && <ExpensesView expenses={expenses} onAddNew={() => setShowAddExpense(true)} onApprove={handleApproveExpense} />}
         {view === "accounts" && <ChartOfAccountsView />}
         {view === "journal" && <JournalView />}
         {view === "reports" && <ReportsView />}
       </div>
 
-      {showCreateInvoice && <CreateInvoiceModal onClose={() => setShowCreateInvoice(false)} />}
-      {showAddExpense && <AddExpenseModal onClose={() => setShowAddExpense(false)} />}
+      {showCreateInvoice && <CreateInvoiceModal onClose={() => setShowCreateInvoice(false)} onCreated={handleInvoiceCreated} />}
+      {showAddExpense && <AddExpenseModal onClose={() => setShowAddExpense(false)} onAdded={handleExpenseAdded} />}
     </div>
   );
 }
@@ -235,7 +288,10 @@ function AccOverview({ onNavigate }: { onNavigate: (view: AccView) => void }) {
   );
 }
 
-function InvoicesView({ onCreateNew }: { onCreateNew: () => void }) {
+type InvoiceItem = typeof initialInvoices[number];
+type ExpenseItem = typeof initialExpenses[number];
+
+function InvoicesView({ invoices, onCreateNew, onSend }: { invoices: InvoiceItem[]; onCreateNew: () => void; onSend: (id: string) => void }) {
   const [filter, setFilter] = useState("all");
 
   const filtered = filter === "all" ? invoices : invoices.filter((i) => i.status === filter);
@@ -293,7 +349,7 @@ function InvoicesView({ onCreateNew }: { onCreateNew: () => void }) {
                 <td className="px-4 py-3">
                   <div className="flex justify-center gap-1">
                     {inv.status === "draft" && (
-                      <button className="p-1 rounded bg-blue-100 text-blue-600 hover:bg-blue-200" title="Send"><Send size={14} /></button>
+                      <button onClick={() => onSend(inv.id)} className="p-1 rounded bg-blue-100 text-blue-600 hover:bg-blue-200" title="Send"><Send size={14} /></button>
                     )}
                     <button className="p-1 rounded bg-gray-100 text-gray-600 hover:bg-gray-200" title="Download"><Download size={14} /></button>
                   </div>
@@ -307,7 +363,7 @@ function InvoicesView({ onCreateNew }: { onCreateNew: () => void }) {
   );
 }
 
-function ExpensesView({ onAddNew }: { onAddNew: () => void }) {
+function ExpensesView({ expenses, onAddNew, onApprove }: { expenses: ExpenseItem[]; onAddNew: () => void; onApprove: (id: string) => void }) {
   return (
     <div className="max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-4">
@@ -343,6 +399,7 @@ function ExpensesView({ onAddNew }: { onAddNew: () => void }) {
               <th className="text-center px-4 py-3 font-medium text-gray-600">Date</th>
               <th className="text-right px-4 py-3 font-medium text-gray-600">Amount</th>
               <th className="text-center px-4 py-3 font-medium text-gray-600">Status</th>
+              <th className="text-center px-4 py-3 font-medium text-gray-600">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -359,6 +416,13 @@ function ExpensesView({ onAddNew }: { onAddNew: () => void }) {
                   }`}>
                     {exp.status}
                   </span>
+                </td>
+                <td className="px-4 py-3 text-center">
+                  {exp.status === "pending" && (
+                    <button onClick={() => onApprove(exp.id)} className="px-2 py-1 rounded bg-green-100 text-green-600 hover:bg-green-200 text-xs font-medium flex items-center gap-1 mx-auto">
+                      <CheckCircle size={12} /> Approve
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
@@ -553,7 +617,7 @@ function ReportsView() {
   );
 }
 
-function CreateInvoiceModal({ onClose }: { onClose: () => void }) {
+function CreateInvoiceModal({ onClose, onCreated }: { onClose: () => void; onCreated: (customer: string, amount: number) => void }) {
   const [form, setForm] = useState({ customer: "", email: "", amount: "", dueDate: "", description: "" });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -565,6 +629,7 @@ function CreateInvoiceModal({ onClose }: { onClose: () => void }) {
         body: JSON.stringify({ ...form, amount: parseFloat(form.amount) }),
       });
     } catch { /* demo mode */ }
+    onCreated(form.customer, parseFloat(form.amount) || 0);
     onClose();
   };
 
@@ -610,7 +675,7 @@ function CreateInvoiceModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function AddExpenseModal({ onClose }: { onClose: () => void }) {
+function AddExpenseModal({ onClose, onAdded }: { onClose: () => void; onAdded: (description: string, amount: number) => void }) {
   const [form, setForm] = useState({ category: "Office Supplies", description: "", amount: "", vendor: "", date: "" });
   const expenseCategories = ["Office Supplies", "Software", "Travel", "Marketing", "Utilities", "Maintenance", "Other"];
 
@@ -623,6 +688,7 @@ function AddExpenseModal({ onClose }: { onClose: () => void }) {
         body: JSON.stringify({ ...form, amount: parseFloat(form.amount) }),
       });
     } catch { /* demo mode */ }
+    onAdded(form.description, parseFloat(form.amount) || 0);
     onClose();
   };
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { notify } from "@/store";
 import {
   Users,
   UserPlus,
@@ -58,7 +59,7 @@ const departments = [
   { name: "Design", count: 3, head: "Lisa Anderson", budget: 204000 },
 ];
 
-const leaveRequests = [
+const initialLeaveRequests = [
   { id: "1", employee: "Sarah Wilson", type: "Vacation", startDate: "2026-04-10", endDate: "2026-04-15", status: "approved", reason: "Family trip" },
   { id: "2", employee: "Mike Johnson", type: "Sick Leave", startDate: "2026-04-08", endDate: "2026-04-09", status: "pending", reason: "Medical appointment" },
   { id: "3", employee: "David Brown", type: "Personal", startDate: "2026-04-12", endDate: "2026-04-12", status: "pending", reason: "Personal matter" },
@@ -82,6 +83,35 @@ export default function HRModule() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showAddEmployee, setShowAddEmployee] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [leaveRequests, setLeaveRequests] = useState(initialLeaveRequests);
+
+  const handleLeaveApprove = (id: string) => {
+    const req = leaveRequests.find((l) => l.id === id);
+    if (!req) return;
+    setLeaveRequests((prev) => prev.map((l) => l.id === id ? { ...l, status: "approved" } : l));
+    notify({
+      title: "Leave Approved",
+      message: `${req.employee}'s ${req.type} (${req.startDate} – ${req.endDate}) has been approved.`,
+      category: "hr",
+      priority: "success",
+      actionLabel: "View Leave",
+      actionModule: "hr",
+    });
+  };
+
+  const handleLeaveReject = (id: string) => {
+    const req = leaveRequests.find((l) => l.id === id);
+    if (!req) return;
+    setLeaveRequests((prev) => prev.map((l) => l.id === id ? { ...l, status: "rejected" } : l));
+    notify({
+      title: "Leave Rejected",
+      message: `${req.employee}'s ${req.type} request has been declined.`,
+      category: "hr",
+      priority: "error",
+      actionLabel: "View Leave",
+      actionModule: "hr",
+    });
+  };
 
   const navItems: { id: HRView; label: string; icon: React.ElementType }[] = [
     { id: "overview", label: "Overview", icon: Building2 },
@@ -116,7 +146,7 @@ export default function HRModule() {
       </div>
 
       <div className="flex-1 overflow-y-auto bg-gray-50 p-6">
-        {view === "overview" && <HROverview onNavigate={setView} />}
+        {view === "overview" && <HROverview onNavigate={setView} leaveRequests={leaveRequests} onApprove={handleLeaveApprove} onReject={handleLeaveReject} />}
         {view === "employees" && (
           <EmployeesList
             searchQuery={searchQuery}
@@ -126,7 +156,7 @@ export default function HRModule() {
           />
         )}
         {view === "attendance" && <AttendanceView />}
-        {view === "leave" && <LeaveManagement />}
+        {view === "leave" && <LeaveManagement leaveRequests={leaveRequests} onApprove={handleLeaveApprove} onReject={handleLeaveReject} />}
         {view === "payroll" && <PayrollView />}
         {view === "departments" && <DepartmentsView />}
       </div>
@@ -137,7 +167,9 @@ export default function HRModule() {
   );
 }
 
-function HROverview({ onNavigate }: { onNavigate: (view: HRView) => void }) {
+type LeaveItem = typeof initialLeaveRequests[number];
+
+function HROverview({ onNavigate, leaveRequests, onApprove, onReject }: { onNavigate: (view: HRView) => void; leaveRequests: LeaveItem[]; onApprove: (id: string) => void; onReject: (id: string) => void }) {
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       {/* Stats */}
@@ -178,8 +210,8 @@ function HROverview({ onNavigate }: { onNavigate: (view: HRView) => void }) {
                   <p className="text-xs text-gray-500">{l.type} - {l.startDate} to {l.endDate}</p>
                 </div>
                 <div className="flex gap-1">
-                  <button className="p-1 rounded bg-green-100 text-green-600 hover:bg-green-200"><CheckCircle size={16} /></button>
-                  <button className="p-1 rounded bg-red-100 text-red-600 hover:bg-red-200"><XCircle size={16} /></button>
+                  <button onClick={() => onApprove(l.id)} className="p-1 rounded bg-green-100 text-green-600 hover:bg-green-200"><CheckCircle size={16} /></button>
+                  <button onClick={() => onReject(l.id)} className="p-1 rounded bg-red-100 text-red-600 hover:bg-red-200"><XCircle size={16} /></button>
                 </div>
               </div>
             ))}
@@ -351,7 +383,7 @@ function AttendanceView() {
   );
 }
 
-function LeaveManagement() {
+function LeaveManagement({ leaveRequests, onApprove, onReject }: { leaveRequests: LeaveItem[]; onApprove: (id: string) => void; onReject: (id: string) => void }) {
   return (
     <div className="max-w-6xl mx-auto">
       <h3 className="text-lg font-semibold mb-4">Leave Requests</h3>
@@ -386,8 +418,8 @@ function LeaveManagement() {
                 <td className="px-4 py-3 text-center">
                   {l.status === "pending" && (
                     <div className="flex justify-center gap-1">
-                      <button className="p-1 rounded bg-green-100 text-green-600 hover:bg-green-200"><CheckCircle size={16} /></button>
-                      <button className="p-1 rounded bg-red-100 text-red-600 hover:bg-red-200"><XCircle size={16} /></button>
+                      <button onClick={() => onApprove(l.id)} className="p-1 rounded bg-green-100 text-green-600 hover:bg-green-200"><CheckCircle size={16} /></button>
+                      <button onClick={() => onReject(l.id)} className="p-1 rounded bg-red-100 text-red-600 hover:bg-red-200"><XCircle size={16} /></button>
                     </div>
                   )}
                 </td>
@@ -401,6 +433,7 @@ function LeaveManagement() {
 }
 
 function PayrollView() {
+  const [processed, setProcessed] = useState(false);
   const payrollData = demoEmployees.filter(e => e.status !== "terminated").map(e => ({
     ...e,
     monthlySalary: e.salary / 12,
@@ -408,13 +441,27 @@ function PayrollView() {
     deductions: e.salary / 12 * 0.15,
     bonus: Math.random() > 0.7 ? Math.random() * 1000 : 0,
   }));
+  const totalPayout = payrollData.reduce((s, e) => s + e.monthlySalary + e.overtime - e.deductions + e.bonus, 0);
+
+  const handleProcessPayroll = () => {
+    if (processed) return;
+    setProcessed(true);
+    notify({
+      title: "Payroll Processed",
+      message: `April 2026 payroll for ${payrollData.length} employees totalling ${formatCurrency(totalPayout)} has been processed.`,
+      category: "hr",
+      priority: "success",
+      actionLabel: "View Payroll",
+      actionModule: "hr",
+    });
+  };
 
   return (
     <div className="max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold">Payroll - April 2026</h3>
-        <button className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm">
-          Process Payroll
+        <button onClick={handleProcessPayroll} disabled={processed} className={`px-4 py-2 rounded-lg text-sm text-white transition-colors ${processed ? "bg-green-600 cursor-default" : "bg-purple-600 hover:bg-purple-700"}`}>
+          {processed ? "✓ Payroll Processed" : "Process Payroll"}
         </button>
       </div>
       <div className="bg-white rounded-xl border overflow-hidden overflow-x-auto">

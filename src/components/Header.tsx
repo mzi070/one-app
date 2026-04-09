@@ -2,7 +2,8 @@
 
 import { useRef, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useAppStore, useAuthStore, useProfileStore } from "@/store";
+import { useAppStore, useAuthStore, useProfileStore, useNotificationStore } from "@/store";
+import NotificationPanel from "@/components/NotificationPanel";
 import {
   Menu,
   Bell,
@@ -29,7 +30,10 @@ export default function Header() {
   const { currentModule, toggleSidebar, setModule } = useAppStore();
   const { logout } = useAuthStore();
   const profile = useProfileStore();
+  const { notifications } = useNotificationStore();
+  const unreadCount = notifications.filter((n) => !n.read).length;
   const [showMenu, setShowMenu] = useState(false);
+  const [showNotif, setShowNotif] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -54,6 +58,7 @@ export default function Header() {
   };
 
   return (
+    <>
     <header className="sticky top-0 z-30 bg-white border-b border-gray-200 px-4 py-3">
       <div className="flex items-center justify-between">
         {/* Left */}
@@ -72,11 +77,16 @@ export default function Header() {
         {/* Right */}
         <div className="flex items-center gap-1.5">
           {/* Notifications */}
-          <button className="p-2 rounded-lg hover:bg-gray-100 text-gray-600 relative transition-colors">
+          <button
+            onClick={() => { setShowMenu(false); setShowNotif((v) => !v); }}
+            className={`relative p-2 rounded-lg hover:bg-gray-100 transition-colors ${showNotif ? "text-indigo-600 bg-indigo-50" : "text-gray-600"}`}
+          >
             <Bell size={19} />
-            <span className="absolute top-1 right-1 w-3.5 h-3.5 bg-red-500 rounded-full text-[9px] text-white flex items-center justify-center font-bold">
-              3
-            </span>
+            {unreadCount > 0 && (
+              <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 rounded-full text-[9px] text-white flex items-center justify-center font-bold">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
           </button>
 
           {/* Settings shortcut */}
@@ -166,5 +176,8 @@ export default function Header() {
         </div>
       </div>
     </header>
+
+    <NotificationPanel open={showNotif} onClose={() => setShowNotif(false)} />
+    </>
   );
 }

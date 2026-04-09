@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { usePOSStore } from "@/store";
+import { usePOSStore, notify } from "@/store";
 import {
   Search,
   Plus,
@@ -114,6 +114,33 @@ export default function POSModule() {
       // Continue with local checkout
     }
     setCheckoutDone(true);
+    const total = getTotal();
+    const itemCount = cart.reduce((s, i) => s + i.quantity, 0);
+    notify({
+      title: "Sale Completed",
+      message: `${itemCount} item${itemCount !== 1 ? "s" : ""} sold for ${formatCurrency(total)} via ${paymentMethod}.`,
+      category: "pos",
+      priority: "success",
+      actionLabel: "View Reports",
+      actionModule: "pos",
+    });
+    // Low stock check
+    const LOW_STOCK_THRESHOLD = 10;
+    const lowStockItems = products.filter((p) => {
+      const cartItem = cart.find((c) => c.productId === p.id);
+      const remaining = p.quantity - (cartItem?.quantity ?? 0);
+      return remaining <= LOW_STOCK_THRESHOLD && remaining >= 0;
+    });
+    if (lowStockItems.length > 0) {
+      notify({
+        title: "Low Stock Alert",
+        message: `${lowStockItems.map((p) => p.name).join(", ")} ${lowStockItems.length === 1 ? "is" : "are"} running low on stock.`,
+        category: "pos",
+        priority: "warning",
+        actionLabel: "View Inventory",
+        actionModule: "pos",
+      });
+    }
     setTimeout(() => {
       clearCart();
       setCheckoutDone(false);

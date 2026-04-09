@@ -3,6 +3,135 @@ import { persist } from "zustand/middleware";
 
 export type AppModule = "dashboard" | "pos" | "hr" | "accounting" | "pdf" | "settings" | "profile";
 
+// ─── Notification Store ───────────────────────────────────────────────────────
+export type NotifPriority = "info" | "success" | "warning" | "error";
+export type NotifCategory = "pos" | "hr" | "accounting" | "system" | "pdf";
+
+export interface AppNotification {
+  id: string;
+  title: string;
+  message: string;
+  category: NotifCategory;
+  priority: NotifPriority;
+  timestamp: string;
+  read: boolean;
+  actionLabel?: string;
+  actionModule?: AppModule;
+}
+
+interface NotificationState {
+  notifications: AppNotification[];
+  addNotification: (n: Omit<AppNotification, "id" | "timestamp" | "read">) => void;
+  markRead: (id: string) => void;
+  markAllRead: () => void;
+  dismiss: (id: string) => void;
+  clearAll: () => void;
+}
+
+export const useNotificationStore = create<NotificationState>()(
+  persist(
+    (set) => ({
+      notifications: [
+        {
+          id: "init-1",
+          title: "Welcome to OneApp",
+          message: "Your all-in-one business platform is ready. Explore POS, HR, Accounting, and PDF tools.",
+          category: "system",
+          priority: "info",
+          timestamp: new Date(Date.now() - 600000).toISOString(),
+          read: false,
+          actionLabel: "Go to Dashboard",
+          actionModule: "dashboard",
+        },
+        {
+          id: "init-2",
+          title: "Low Stock Alert",
+          message: "3 products are running low on stock. Review and reorder soon.",
+          category: "pos",
+          priority: "warning",
+          timestamp: new Date(Date.now() - 1800000).toISOString(),
+          read: false,
+          actionLabel: "View Inventory",
+          actionModule: "pos",
+        },
+        {
+          id: "init-3",
+          title: "Overdue Invoice",
+          message: "Invoice INV-2024-085 for Acme Corp ($1,200) is 7 days overdue.",
+          category: "accounting",
+          priority: "error",
+          timestamp: new Date(Date.now() - 3600000).toISOString(),
+          read: false,
+          actionLabel: "View Invoices",
+          actionModule: "accounting",
+        },
+      ],
+      addNotification: (n) =>
+        set((state) => ({
+          notifications: [
+            { ...n, id: crypto.randomUUID(), timestamp: new Date().toISOString(), read: false },
+            ...state.notifications,
+          ],
+        })),
+      markRead: (id) =>
+        set((state) => ({
+          notifications: state.notifications.map((n) =>
+            n.id === id ? { ...n, read: true } : n
+          ),
+        })),
+      markAllRead: () =>
+        set((state) => ({
+          notifications: state.notifications.map((n) => ({ ...n, read: true })),
+        })),
+      dismiss: (id) =>
+        set((state) => ({
+          notifications: state.notifications.filter((n) => n.id !== id),
+        })),
+      clearAll: () => set({ notifications: [] }),
+    }),
+    { name: "oneapp-notifications" }
+  )
+);
+
+// ─── Toast Store (non-persisted, in-memory only) ──────────────────────────────
+export interface ToastItem {
+  id: string;
+  title: string;
+  message: string;
+  type: "success" | "error" | "warning" | "info";
+  duration: number;
+}
+
+interface ToastState {
+  toasts: ToastItem[];
+  addToast: (t: Omit<ToastItem, "id">) => void;
+  removeToast: (id: string) => void;
+}
+
+export const useToastStore = create<ToastState>((set) => ({
+  toasts: [],
+  addToast: (t) =>
+    set((state) => ({
+      toasts: [...state.toasts, { ...t, id: crypto.randomUUID() }],
+    })),
+  removeToast: (id) =>
+    set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) })),
+}));
+
+// Helper: fire both a persisted notification AND a transient toast
+export function notify(
+  n: Omit<AppNotification, "id" | "timestamp" | "read">,
+  toast?: { title?: string; message?: string; type?: ToastItem["type"] }
+) {
+  useNotificationStore.getState().addNotification(n);
+  useToastStore.getState().addToast({
+    title: toast?.title ?? n.title,
+    message: toast?.message ?? n.message,
+    type: toast?.type ?? (n.priority === "error" ? "error" : n.priority === "warning" ? "warning" : n.priority === "success" ? "success" : "info"),
+    duration: toast?.type === "error" ? 6000 : 4000,
+  });
+}
+
 // ─── Auth Store ───────────────────────────────────────────────────────────────
 interface AuthState {
   isAuthenticated: boolean;
