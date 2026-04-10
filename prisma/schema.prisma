@@ -5,6 +5,7 @@ generator client {
 
 datasource db {
   provider = "sqlite"
+  url      = env("DATABASE_URL")
 }
 
 // ==================== POS Models ====================
@@ -181,22 +182,18 @@ model Account {
 
   parent   Account?  @relation("AccountHierarchy", fields: [parentId], references: [id])
   children Account[] @relation("AccountHierarchy")
-  debitEntries  JournalEntry[] @relation("DebitAccount")
-  creditEntries JournalEntry[] @relation("CreditAccount")
 }
 
 model JournalEntry {
   id            String   @id @default(uuid())
   date          DateTime
   description   String
-  debitAccountId  String
-  creditAccountId String
+  debitAccount  String
+  creditAccount String
   amount        Float
   reference     String?
+  posted        Boolean  @default(true)
   createdAt     DateTime @default(now())
-
-  debitAccount  Account @relation("DebitAccount", fields: [debitAccountId], references: [id])
-  creditAccount Account @relation("CreditAccount", fields: [creditAccountId], references: [id])
 }
 
 model Invoice {
@@ -205,11 +202,13 @@ model Invoice {
   type          String
   customerName  String
   customerEmail String?
+  description   String?
   items         String
   subtotal      Float
   taxAmount     Float    @default(0)
   total         Float
   status        String   @default("draft")
+  issueDate     DateTime @default(now())
   dueDate       DateTime
   paidAt        DateTime?
   createdAt     DateTime @default(now())

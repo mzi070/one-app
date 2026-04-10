@@ -55,25 +55,9 @@ type POSView = "sale" | "products" | "customers" | "reports";
 
 const categories = ["all", "Electronics", "Grocery", "Beverages", "Clothing", "Other"];
 
-// Demo products for when DB is empty
-const demoProducts: Product[] = [
-  { id: "demo-1", name: "Wireless Mouse", sku: "WM-001", price: 29.99, quantity: 50, category: "Electronics", imageUrl: null },
-  { id: "demo-2", name: "USB-C Cable", sku: "UC-002", price: 12.99, quantity: 100, category: "Electronics", imageUrl: null },
-  { id: "demo-3", name: "Notebook A5", sku: "NB-003", price: 4.99, quantity: 200, category: "Other", imageUrl: null },
-  { id: "demo-4", name: "Coffee Beans 500g", sku: "CB-004", price: 18.50, quantity: 75, category: "Beverages", imageUrl: null },
-  { id: "demo-5", name: "Green Tea Pack", sku: "GT-005", price: 8.99, quantity: 120, category: "Beverages", imageUrl: null },
-  { id: "demo-6", name: "Organic Milk 1L", sku: "OM-006", price: 5.49, quantity: 60, category: "Grocery", imageUrl: null },
-  { id: "demo-7", name: "Whole Wheat Bread", sku: "WB-007", price: 3.99, quantity: 40, category: "Grocery", imageUrl: null },
-  { id: "demo-8", name: "Bluetooth Speaker", sku: "BS-008", price: 49.99, quantity: 30, category: "Electronics", imageUrl: null },
-  { id: "demo-9", name: "Cotton T-Shirt", sku: "CT-009", price: 19.99, quantity: 80, category: "Clothing", imageUrl: null },
-  { id: "demo-10", name: "Desk Lamp LED", sku: "DL-010", price: 34.99, quantity: 25, category: "Electronics", imageUrl: null },
-  { id: "demo-11", name: "Hand Sanitizer", sku: "HS-011", price: 6.99, quantity: 150, category: "Other", imageUrl: null },
-  { id: "demo-12", name: "Energy Drink 250ml", sku: "ED-012", price: 2.99, quantity: 200, category: "Beverages", imageUrl: null },
-];
-
 export default function POSModule() {
   const [view, setView] = useState<POSView>("sale");
-  const [products, setProducts] = useState<Product[]>(demoProducts);
+  const [products, setProducts] = useState<Product[]>([]);
   const [showCheckout, setShowCheckout] = useState(false);
   const [checkoutDone, setCheckoutDone] = useState(false);
   const [showAddProduct, setShowAddProduct] = useState(false);
@@ -107,10 +91,10 @@ export default function POSModule() {
       const res = await fetch("/api/products");
       if (res.ok) {
         const data = await res.json();
-        if (data.length > 0) setProducts(data);
+        setProducts(data);
       }
     } catch {
-      // Use demo products
+      // remain empty
     }
   }, []);
 

@@ -31,41 +31,7 @@ interface NotificationState {
 export const useNotificationStore = create<NotificationState>()(
   persist(
     (set) => ({
-      notifications: [
-        {
-          id: "init-1",
-          title: "Welcome to OneApp",
-          message: "Your all-in-one business platform is ready. Explore POS, HR, Accounting, and PDF tools.",
-          category: "system",
-          priority: "info",
-          timestamp: new Date(Date.now() - 600000).toISOString(),
-          read: false,
-          actionLabel: "Go to Dashboard",
-          actionModule: "dashboard",
-        },
-        {
-          id: "init-2",
-          title: "Low Stock Alert",
-          message: "3 products are running low on stock. Review and reorder soon.",
-          category: "pos",
-          priority: "warning",
-          timestamp: new Date(Date.now() - 1800000).toISOString(),
-          read: false,
-          actionLabel: "View Inventory",
-          actionModule: "pos",
-        },
-        {
-          id: "init-3",
-          title: "Overdue Invoice",
-          message: "Invoice INV-2024-085 for Acme Corp ($1,200) is 7 days overdue.",
-          category: "accounting",
-          priority: "error",
-          timestamp: new Date(Date.now() - 3600000).toISOString(),
-          read: false,
-          actionLabel: "View Invoices",
-          actionModule: "accounting",
-        },
-      ],
+      notifications: [],
       addNotification: (n) =>
         set((state) => ({
           notifications: [
@@ -190,18 +156,10 @@ interface POSCustomerState {
   adjustCredit: (id: string, delta: number) => void;
 }
 
-const defaultCustomers: POSCustomer[] = [
-  { id: "cust-1", name: "John Smith", email: "john@example.com", phone: "+1-234-5678", address: "123 Main St, New York", notes: "Prefers card payment", creditBalance: 150.00, totalSpent: 3240.50, visitCount: 28, lastVisit: new Date(Date.now() - 2 * 86400000).toISOString(), joinedAt: "2024-03-15T09:00:00.000Z" },
-  { id: "cust-2", name: "Jane Doe", email: "jane@example.com", phone: "+1-345-6789", address: "456 Oak Ave, Los Angeles", notes: "", creditBalance: 0, totalSpent: 890.00, visitCount: 11, lastVisit: new Date(Date.now() - 7 * 86400000).toISOString(), joinedAt: "2024-06-20T11:30:00.000Z" },
-  { id: "cust-3", name: "Acme Corp", email: "billing@acme.com", phone: "+1-456-7890", address: "789 Business Blvd, Chicago", notes: "Net-30 terms. Bulk buyer.", creditBalance: 2450.00, totalSpent: 18750.00, visitCount: 64, lastVisit: new Date(Date.now() - 1 * 86400000).toISOString(), joinedAt: "2023-11-01T08:00:00.000Z" },
-  { id: "cust-4", name: "Sarah Lee", email: "sarah@example.com", phone: "+1-567-8901", address: "321 Pine Rd, Houston", notes: "Birthday: March 12", creditBalance: 75.00, totalSpent: 540.25, visitCount: 9, lastVisit: new Date(Date.now() - 14 * 86400000).toISOString(), joinedAt: "2025-01-08T14:00:00.000Z" },
-  { id: "cust-5", name: "Tech Solutions Ltd", email: "orders@techsol.com", phone: "+1-678-9012", address: "654 Innovation Dr, San Francisco", notes: "IT equipment buyer", creditBalance: 0, totalSpent: 6500.00, visitCount: 22, lastVisit: new Date(Date.now() - 3 * 86400000).toISOString(), joinedAt: "2024-02-14T10:00:00.000Z" },
-];
-
 export const usePOSCustomerStore = create<POSCustomerState>()(
   persist(
     (set) => ({
-      customers: defaultCustomers,
+      customers: [],
       addCustomer: (c) => {
         const newCustomer: POSCustomer = {
           ...c,
@@ -505,6 +463,174 @@ export const useProfileStore = create<ProfileState>()(
     { name: "oneapp-profile" }
   )
 );
+// ─── HR Store ─────────────────────────────────────────────────────────────────
+export interface HREmployee {
+  id: string;
+  employeeId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  position: string;
+  department: string;
+  salary: number;
+  hireDate: string;
+  status: "active" | "on-leave" | "terminated";
+  address: string;
+  emergencyContact: string;
+  emergencyPhone: string;
+  notes: string;
+}
+
+export interface AttendanceRecord {
+  id: string;
+  employeeId: string;
+  date: string;
+  clockIn: string | null;
+  clockOut: string | null;
+  status: "present" | "absent" | "late" | "on-leave" | "half-day";
+  notes: string;
+}
+
+export interface LeaveRequest {
+  id: string;
+  employeeId: string;
+  type: "Annual" | "Sick" | "Personal" | "Unpaid" | "Maternity" | "Paternity";
+  startDate: string;
+  endDate: string;
+  reason: string;
+  status: "pending" | "approved" | "rejected";
+  appliedAt: string;
+  reviewNote: string;
+}
+
+export interface PayrollRecord {
+  id: string;
+  employeeId: string;
+  period: string;
+  baseSalary: number;
+  overtime: number;
+  bonus: number;
+  taxRate: number;
+  otherDeductions: number;
+  netPay: number;
+  status: "draft" | "processed" | "paid";
+  processedAt: string | null;
+}
+
+export interface HRDepartment {
+  id: string;
+  name: string;
+  headEmployeeId: string | null;
+  budget: number;
+  description: string;
+}
+
+interface HRState {
+  employees: HREmployee[];
+  attendance: AttendanceRecord[];
+  leaveRequests: LeaveRequest[];
+  payrollRecords: PayrollRecord[];
+  departments: HRDepartment[];
+
+  // Employees
+  addEmployee: (e: Omit<HREmployee, "id" | "employeeId">) => HREmployee;
+  updateEmployee: (id: string, updates: Partial<HREmployee>) => void;
+  deleteEmployee: (id: string) => void;
+
+  // Attendance
+  upsertAttendance: (record: Omit<AttendanceRecord, "id">) => void;
+  deleteAttendance: (id: string) => void;
+
+  // Leave
+  addLeaveRequest: (req: Omit<LeaveRequest, "id" | "appliedAt">) => void;
+  updateLeaveStatus: (id: string, status: LeaveRequest["status"], note: string) => void;
+  deleteLeaveRequest: (id: string) => void;
+
+  // Payroll
+  upsertPayrollRecord: (record: Omit<PayrollRecord, "id">) => void;
+  processPayroll: (period: string) => void;
+  markPayrollPaid: (period: string) => void;
+
+  // Departments
+  addDepartment: (d: Omit<HRDepartment, "id">) => void;
+  updateDepartment: (id: string, updates: Partial<HRDepartment>) => void;
+  deleteDepartment: (id: string) => void;
+}
+
+export const useHRStore = create<HRState>()(
+  persist(
+    (set, get) => ({
+      employees: [],
+      attendance: [],
+      leaveRequests: [],
+      payrollRecords: [],
+      departments: [],
+
+      addEmployee: (e) => {
+        const existing = get().employees;
+        const num = existing.length + 1;
+        const newEmp: HREmployee = { ...e, id: `emp-${Date.now()}`, employeeId: `EMP-${1000 + num}` };
+        set((s) => ({ employees: [newEmp, ...s.employees] }));
+        return newEmp;
+      },
+      updateEmployee: (id, updates) =>
+        set((s) => ({ employees: s.employees.map((e) => (e.id === id ? { ...e, ...updates } : e)) })),
+      deleteEmployee: (id) =>
+        set((s) => ({ employees: s.employees.filter((e) => e.id !== id) })),
+
+      upsertAttendance: (record) =>
+        set((s) => {
+          const existing = s.attendance.find((a) => a.employeeId === record.employeeId && a.date === record.date);
+          if (existing) {
+            return { attendance: s.attendance.map((a) => a.id === existing.id ? { ...a, ...record } : a) };
+          }
+          return { attendance: [{ ...record, id: `att-${Date.now()}` }, ...s.attendance] };
+        }),
+      deleteAttendance: (id) =>
+        set((s) => ({ attendance: s.attendance.filter((a) => a.id !== id) })),
+
+      addLeaveRequest: (req) =>
+        set((s) => ({ leaveRequests: [{ ...req, id: `lv-${Date.now()}`, appliedAt: new Date().toISOString() }, ...s.leaveRequests] })),
+      updateLeaveStatus: (id, status, note) =>
+        set((s) => ({ leaveRequests: s.leaveRequests.map((l) => l.id === id ? { ...l, status, reviewNote: note } : l) })),
+      deleteLeaveRequest: (id) =>
+        set((s) => ({ leaveRequests: s.leaveRequests.filter((l) => l.id !== id) })),
+
+      upsertPayrollRecord: (record) =>
+        set((s) => {
+          const existing = s.payrollRecords.find((p) => p.employeeId === record.employeeId && p.period === record.period);
+          if (existing) {
+            return { payrollRecords: s.payrollRecords.map((p) => p.id === existing.id ? { ...existing, ...record } : p) };
+          }
+          return { payrollRecords: [{ ...record, id: `pr-${Date.now()}` }, ...s.payrollRecords] };
+        }),
+      processPayroll: (period) =>
+        set((s) => ({
+          payrollRecords: s.payrollRecords.map((p) =>
+            p.period === period && p.status === "draft"
+              ? { ...p, status: "processed", processedAt: new Date().toISOString() }
+              : p
+          ),
+        })),
+      markPayrollPaid: (period) =>
+        set((s) => ({
+          payrollRecords: s.payrollRecords.map((p) =>
+            p.period === period && p.status === "processed" ? { ...p, status: "paid" } : p
+          ),
+        })),
+
+      addDepartment: (d) =>
+        set((s) => ({ departments: [...s.departments, { ...d, id: `dept-${Date.now()}` }] })),
+      updateDepartment: (id, updates) =>
+        set((s) => ({ departments: s.departments.map((d) => (d.id === id ? { ...d, ...updates } : d)) })),
+      deleteDepartment: (id) =>
+        set((s) => ({ departments: s.departments.filter((d) => d.id !== id) })),
+    }),
+    { name: "oneapp-hr" }
+  )
+);
+
 // ─── Theme Store ──────────────────────────────────────────────────────────────
 interface ThemeState {
   isDark: boolean;

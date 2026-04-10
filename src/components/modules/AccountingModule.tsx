@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { notify } from "@/store";
 import {
   DollarSign,
@@ -37,7 +37,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, generateInvoiceNumber } from "@/lib/utils";
 
 type AccView = "overview" | "invoices" | "expenses" | "accounts" | "journal" | "reports";
 
@@ -89,73 +89,65 @@ interface JournalEntry {
   posted: boolean;
 }
 
-// ── Initial Data ──────────────────────────────────────────────────────────────
-const initialInvoices: Invoice[] = [
-  { id: "INV-2026-001", customer: "Acme Corp", email: "billing@acme.com", amount: 12500, subtotal: 11905, tax: 595, status: "paid", dueDate: "2026-03-15", issueDate: "2026-03-01", paidAt: "2026-03-12", description: "Software development services", items: [{ description: "Development Hours", qty: 100, rate: 119.05 }] },
-  { id: "INV-2026-002", customer: "Tech Solutions", email: "ap@techsolutions.io", amount: 8750, subtotal: 8333, tax: 417, status: "paid", dueDate: "2026-03-20", issueDate: "2026-03-05", paidAt: "2026-03-18", description: "Consulting services Q1", items: [{ description: "Consulting", qty: 70, rate: 119.04 }] },
-  { id: "INV-2026-003", customer: "Global Inc", email: "finance@global.com", amount: 15200, subtotal: 14476, tax: 724, status: "sent", dueDate: "2026-04-15", issueDate: "2026-03-20", paidAt: null, description: "Platform subscription - Annual", items: [{ description: "Annual License", qty: 1, rate: 14476 }] },
-  { id: "INV-2026-004", customer: "StartUp Co", email: "cfo@startup.co", amount: 3400, subtotal: 3238, tax: 162, status: "overdue", dueDate: "2026-04-01", issueDate: "2026-03-10", paidAt: null, description: "Design services", items: [{ description: "UI/UX Design", qty: 20, rate: 161.9 }] },
-  { id: "INV-2026-005", customer: "Design Studio", email: "accounts@designstudio.com", amount: 6800, subtotal: 6476, tax: 324, status: "draft", dueDate: "2026-04-20", issueDate: "2026-04-01", paidAt: null, description: "Brand identity package", items: [{ description: "Branding Package", qty: 1, rate: 6476 }] },
-  { id: "INV-2026-006", customer: "Cloud Services", email: "billing@cloudsvcs.net", amount: 22000, subtotal: 20952, tax: 1048, status: "sent", dueDate: "2026-04-25", issueDate: "2026-04-01", paidAt: null, description: "Infrastructure setup & support", items: [{ description: "Infrastructure", qty: 1, rate: 20952 }] },
-  { id: "INV-2026-007", customer: "Alpha LLC", email: "accounts@alphallc.com", amount: 4500, subtotal: 4286, tax: 214, status: "paid", dueDate: "2026-03-28", issueDate: "2026-03-15", paidAt: "2026-03-25", description: "Monthly retainer", items: [{ description: "Retainer", qty: 1, rate: 4286 }] },
-];
+// ── API Mapping Helpers ───────────────────────────────────────────────────────
+function mapInvoice(raw: any): Invoice {
+  return {
+    id: raw.invoiceNumber,
+    customer: raw.customerName,
+    email: raw.customerEmail || "",
+    amount: raw.total,
+    subtotal: raw.subtotal,
+    tax: raw.taxAmount,
+    status: raw.status,
+    dueDate: raw.dueDate ? String(raw.dueDate).split("T")[0] : "",
+    issueDate: raw.issueDate ? String(raw.issueDate).split("T")[0] : "",
+    paidAt: raw.paidAt ? String(raw.paidAt).split("T")[0] : null,
+    description: raw.description || "",
+    items: (() => { try { return JSON.parse(raw.items || "[]"); } catch { return []; } })(),
+  };
+}
 
-const initialExpenses: Expense[] = [
-  { id: "EXP-001", category: "Office Supplies", description: "Printer paper and toner", amount: 245, date: "2026-04-05", vendor: "OfficeMax", status: "approved" },
-  { id: "EXP-002", category: "Software", description: "Monthly SaaS subscriptions", amount: 1200, date: "2026-04-01", vendor: "Various", status: "approved" },
-  { id: "EXP-003", category: "Travel", description: "Client meeting - flight & hotel", amount: 890, date: "2026-04-03", vendor: "Delta Airlines", status: "pending" },
-  { id: "EXP-004", category: "Marketing", description: "Google Ads campaign", amount: 2500, date: "2026-04-01", vendor: "Google", status: "approved" },
-  { id: "EXP-005", category: "Utilities", description: "Electricity bill - March", amount: 680, date: "2026-04-02", vendor: "Power Co", status: "approved" },
-  { id: "EXP-006", category: "Maintenance", description: "Office AC repair", amount: 350, date: "2026-04-06", vendor: "Cool Fix", status: "pending" },
-  { id: "EXP-007", category: "Travel", description: "Team lunch - Q1 review", amount: 420, date: "2026-03-31", vendor: "The Prime Rib", status: "approved" },
-  { id: "EXP-008", category: "Software", description: "Adobe Creative Cloud", amount: 599, date: "2026-03-28", vendor: "Adobe", status: "approved" },
-];
+function mapExpense(raw: any): Expense {
+  return {
+    id: raw.id,
+    category: raw.category,
+    description: raw.description,
+    amount: raw.amount,
+    date: raw.date ? String(raw.date).split("T")[0] : "",
+    vendor: raw.vendor || "",
+    status: raw.status,
+    notes: raw.notes || "",
+  };
+}
 
-const initialAccounts: Account[] = [
-  { code: "1000", name: "Cash", type: "Asset", balance: 45230 },
-  { code: "1100", name: "Accounts Receivable", type: "Asset", balance: 18450 },
-  { code: "1200", name: "Inventory", type: "Asset", balance: 32100 },
-  { code: "1500", name: "Equipment", type: "Asset", balance: 15000 },
-  { code: "2000", name: "Accounts Payable", type: "Liability", balance: 12340 },
-  { code: "2100", name: "Taxes Payable", type: "Liability", balance: 3450 },
-  { code: "2500", name: "Loans Payable", type: "Liability", balance: 25000 },
-  { code: "3000", name: "Owner's Equity", type: "Equity", balance: 50000 },
-  { code: "4000", name: "Sales Revenue", type: "Revenue", balance: 128450 },
-  { code: "4100", name: "Service Revenue", type: "Revenue", balance: 34200 },
-  { code: "5000", name: "Cost of Goods Sold", type: "Expense", balance: 64225 },
-  { code: "5100", name: "Salaries Expense", type: "Expense", balance: 42000 },
-  { code: "5200", name: "Rent Expense", type: "Expense", balance: 8400 },
-  { code: "5300", name: "Utilities Expense", type: "Expense", balance: 2100 },
-];
+function mapAccount(raw: any): Account {
+  return {
+    code: raw.code,
+    name: raw.name,
+    type: raw.type,
+    balance: raw.balance,
+    description: raw.description || "",
+    isActive: raw.isActive ?? true,
+  };
+}
 
-const initialJournalEntries: JournalEntry[] = [
-  { id: "JE-001", date: "2026-04-08", description: "Sales revenue - Acme Corp", reference: "INV-2026-001", debit: "Cash", credit: "Sales Revenue", amount: 12500, posted: true },
-  { id: "JE-002", date: "2026-04-07", description: "Monthly rent payment", reference: "EXP-RENT", debit: "Rent Expense", credit: "Cash", amount: 2800, posted: true },
-  { id: "JE-003", date: "2026-04-06", description: "Inventory purchase", reference: "PO-2026-012", debit: "Inventory", credit: "Accounts Payable", amount: 5400, posted: true },
-  { id: "JE-004", date: "2026-04-05", description: "Office supplies", reference: "EXP-001", debit: "Office Supplies Expense", credit: "Cash", amount: 245, posted: true },
-  { id: "JE-005", date: "2026-04-04", description: "Client payment received", reference: "INV-2026-002", debit: "Cash", credit: "Accounts Receivable", amount: 8750, posted: true },
-  { id: "JE-006", date: "2026-04-03", description: "Salary payment", reference: "PAY-APR-2026", debit: "Salaries Expense", credit: "Cash", amount: 14000, posted: true },
-  { id: "JE-007", date: "2026-04-02", description: "Loan repayment", reference: "LOAN-2026-04", debit: "Loans Payable", credit: "Cash", amount: 1500, posted: true },
-  { id: "JE-008", date: "2026-04-01", description: "Google Ads payment", reference: "EXP-004", debit: "Marketing Expense", credit: "Cash", amount: 2500, posted: false },
-];
-
-const monthlyData = [
-  { month: "Oct", revenue: 85000, expenses: 62000 },
-  { month: "Nov", revenue: 92000, expenses: 68000 },
-  { month: "Dec", revenue: 118000, expenses: 74000 },
-  { month: "Jan", revenue: 95000, expenses: 71000 },
-  { month: "Feb", revenue: 108000, expenses: 78000 },
-  { month: "Mar", revenue: 127000, expenses: 82000 },
-  { month: "Apr", revenue: 134000, expenses: 87000 },
-];
-
-let invoiceNextNum = 8;
-let expenseNextNum = 9;
-let journalNextNum = 9;
+function mapJournalEntry(raw: any): JournalEntry {
+  return {
+    id: raw.id,
+    date: raw.date ? String(raw.date).split("T")[0] : "",
+    description: raw.description,
+    reference: raw.reference || "—",
+    debit: raw.debitAccount,
+    credit: raw.creditAccount,
+    amount: raw.amount,
+    posted: raw.posted,
+  };
+}
 
 // ── Root Component ────────────────────────────────────────────────────────────
 export default function AccountingModule() {
   const [view, setView] = useState<AccView>("overview");
+  const [loading, setLoading] = useState(true);
   const [showCreateInvoice, setShowCreateInvoice] = useState(false);
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [showAddAccount, setShowAddAccount] = useState(false);
@@ -169,124 +161,229 @@ export default function AccountingModule() {
   const [showViewAccount, setShowViewAccount] = useState<Account | null>(null);
   const [showViewJournal, setShowViewJournal] = useState<JournalEntry | null>(null);
   const [showEditJournal, setShowEditJournal] = useState<JournalEntry | null>(null);
-  const [invoices, setInvoices] = useState(initialInvoices);
-  const [expenses, setExpenses] = useState(initialExpenses);
-  const [accounts, setAccounts] = useState(initialAccounts);
-  const [journalEntries, setJournalEntries] = useState(initialJournalEntries);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
 
-  const handleSendInvoice = (id: string) => {
+  const loadAll = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [invRes, expRes, accRes, jeRes] = await Promise.all([
+        fetch("/api/invoices"),
+        fetch("/api/expenses"),
+        fetch("/api/accounts"),
+        fetch("/api/journal"),
+      ]);
+      const [invData, expData, accData, jeData] = await Promise.all([
+        invRes.json(),
+        expRes.json(),
+        accRes.json(),
+        jeRes.json(),
+      ]);
+      setInvoices(Array.isArray(invData) ? invData.map(mapInvoice) : []);
+      setExpenses(Array.isArray(expData) ? expData.map(mapExpense) : []);
+      setAccounts(Array.isArray(accData) ? accData.map(mapAccount) : []);
+      setJournalEntries(Array.isArray(jeData) ? jeData.map(mapJournalEntry) : []);
+    } catch {
+      // silently fail — UI shows empty state
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadAll(); }, [loadAll]);
+
+  const handleSendInvoice = async (id: string) => {
     const inv = invoices.find((i) => i.id === id);
     if (!inv) return;
     setInvoices((prev) => prev.map((i) => i.id === id ? { ...i, status: "sent" } : i));
+    await fetch(`/api/invoices/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "sent" }) });
     notify({ title: "Invoice Sent", message: `Invoice ${inv.id} for ${inv.customer} (${formatCurrency(inv.amount)}) has been sent.`, category: "accounting", priority: "success", actionLabel: "View Invoices", actionModule: "accounting" });
   };
 
-  const handleMarkPaid = (id: string, date?: string, method?: string, notes?: string) => {
+  const handleMarkPaid = async (id: string, date?: string, method?: string, notes?: string) => {
     const inv = invoices.find((i) => i.id === id);
     if (!inv) return;
-    setInvoices((prev) => prev.map((i) => i.id === id ? { ...i, status: "paid", paidAt: date ?? new Date().toISOString().slice(0, 10) } : i));
+    const paidAt = date ?? new Date().toISOString().slice(0, 10);
+    setInvoices((prev) => prev.map((i) => i.id === id ? { ...i, status: "paid", paidAt } : i));
+    await fetch(`/api/invoices/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "paid", paidAt }) });
     notify({ title: "Payment Recorded", message: `Invoice ${inv.id} for ${inv.customer} (${formatCurrency(inv.amount)}) paid${method ? ` via ${method}` : ""}.${notes ? ` Ref: ${notes}` : ""}`, category: "accounting", priority: "success", actionLabel: "View Invoices", actionModule: "accounting" });
   };
 
-  const handleVoidInvoice = (id: string) => {
+  const handleVoidInvoice = async (id: string) => {
     const inv = invoices.find((i) => i.id === id);
     if (!inv) return;
     setInvoices((prev) => prev.map((i) => i.id === id ? { ...i, status: "void" } : i));
+    await fetch(`/api/invoices/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "void" }) });
     notify({ title: "Invoice Voided", message: `Invoice ${inv.id} has been voided.`, category: "accounting", priority: "warning", actionLabel: "View Invoices", actionModule: "accounting" });
   };
 
-  const handleInvoiceCreated = (inv: Invoice) => {
+  const handleInvoiceCreated = async (inv: Invoice) => {
     setInvoices((prev) => [inv, ...prev]);
+    try {
+      await fetch("/api/invoices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(inv),
+      });
+    } catch { await loadAll(); }
     notify({ title: "Invoice Created", message: `Invoice ${inv.id} for ${inv.customer} (${formatCurrency(inv.amount)}) created.`, category: "accounting", priority: "info", actionLabel: "View Invoices", actionModule: "accounting" });
   };
 
-  const handleEditInvoice = (inv: Invoice) => {
+  const handleEditInvoice = async (inv: Invoice) => {
     setInvoices((prev) => prev.map((i) => i.id === inv.id ? inv : i));
+    try {
+      await fetch(`/api/invoices/${inv.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(inv),
+      });
+    } catch { await loadAll(); }
     notify({ title: "Invoice Updated", message: `Invoice ${inv.id} for ${inv.customer} updated.`, category: "accounting", priority: "success", actionLabel: "View Invoices", actionModule: "accounting" });
   };
 
-  const handleDeleteInvoice = (id: string) => {
+  const handleDeleteInvoice = async (id: string) => {
     setInvoices((prev) => prev.filter((i) => i.id !== id));
+    await fetch(`/api/invoices/${id}`, { method: "DELETE" });
     notify({ title: "Invoice Deleted", message: `Invoice ${id} has been deleted.`, category: "accounting", priority: "info", actionLabel: "View Invoices", actionModule: "accounting" });
   };
 
-  const handleDuplicateInvoice = (inv: Invoice) => {
-    const newInv: Invoice = { ...inv, id: `INV-${new Date().getFullYear()}-${String(invoiceNextNum++).padStart(3, "0")}`, status: "draft", issueDate: new Date().toISOString().slice(0, 10), paidAt: null };
+  const handleDuplicateInvoice = async (inv: Invoice) => {
+    const newInv: Invoice = { ...inv, id: generateInvoiceNumber(), status: "draft", issueDate: new Date().toISOString().slice(0, 10), paidAt: null };
     setInvoices((prev) => [newInv, ...prev]);
+    try {
+      await fetch("/api/invoices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newInv),
+      });
+    } catch { await loadAll(); }
     notify({ title: "Invoice Duplicated", message: `${inv.id} duplicated as ${newInv.id} (draft).`, category: "accounting", priority: "info", actionLabel: "View Invoices", actionModule: "accounting" });
   };
 
-  const handleApproveExpense = (id: string) => {
+  const handleApproveExpense = async (id: string) => {
     const exp = expenses.find((e) => e.id === id);
     if (!exp) return;
     setExpenses((prev) => prev.map((e) => e.id === id ? { ...e, status: "approved" } : e));
+    await fetch(`/api/expenses/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "approved" }) });
     notify({ title: "Expense Approved", message: `${exp.description} (${formatCurrency(exp.amount)}) from ${exp.vendor} approved.`, category: "accounting", priority: "success", actionLabel: "View Expenses", actionModule: "accounting" });
   };
 
-  const handleRejectExpense = (id: string) => {
+  const handleRejectExpense = async (id: string) => {
     const exp = expenses.find((e) => e.id === id);
     if (!exp) return;
     setExpenses((prev) => prev.map((e) => e.id === id ? { ...e, status: "rejected" } : e));
+    await fetch(`/api/expenses/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "rejected" }) });
     notify({ title: "Expense Rejected", message: `${exp.description} (${formatCurrency(exp.amount)}) has been rejected.`, category: "accounting", priority: "error", actionLabel: "View Expenses", actionModule: "accounting" });
   };
 
-  const handleDeleteExpense = (id: string) => {
+  const handleDeleteExpense = async (id: string) => {
     const exp = expenses.find((e) => e.id === id);
     setExpenses((prev) => prev.filter((e) => e.id !== id));
+    await fetch(`/api/expenses/${id}`, { method: "DELETE" });
     if (exp) notify({ title: "Expense Deleted", message: `${exp.description} (${formatCurrency(exp.amount)}) deleted.`, category: "accounting", priority: "info", actionLabel: "View Expenses", actionModule: "accounting" });
   };
 
-  const handleEditExpense = (exp: Expense) => {
+  const handleEditExpense = async (exp: Expense) => {
     setExpenses((prev) => prev.map((e) => e.id === exp.id ? exp : e));
+    try {
+      await fetch(`/api/expenses/${exp.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(exp),
+      });
+    } catch { await loadAll(); }
     notify({ title: "Expense Updated", message: `${exp.description} (${formatCurrency(exp.amount)}) updated and resubmitted for approval.`, category: "accounting", priority: "success", actionLabel: "View Expenses", actionModule: "accounting" });
   };
 
-  const handleResubmitExpense = (id: string) => {
+  const handleResubmitExpense = async (id: string) => {
     const exp = expenses.find((e) => e.id === id);
     if (!exp) return;
     setExpenses((prev) => prev.map((e) => e.id === id ? { ...e, status: "pending" } : e));
+    await fetch(`/api/expenses/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "pending" }) });
     notify({ title: "Expense Resubmitted", message: `${exp.description} (${formatCurrency(exp.amount)}) resubmitted for approval.`, category: "accounting", priority: "info", actionLabel: "View Expenses", actionModule: "accounting" });
   };
 
-  const handleExpenseAdded = (exp: Expense) => {
+  const handleExpenseAdded = async (exp: Expense) => {
     setExpenses((prev) => [exp, ...prev]);
+    try {
+      await fetch("/api/expenses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(exp),
+      });
+    } catch { await loadAll(); }
     notify({ title: "Expense Submitted", message: `${exp.description} (${formatCurrency(exp.amount)}) submitted for approval.`, category: "accounting", priority: "info", actionLabel: "View Expenses", actionModule: "accounting" });
   };
 
-  const handleAccountAdded = (acc: Account) => {
+  const handleAccountAdded = async (acc: Account) => {
     setAccounts((prev) => [...prev, acc].sort((a, b) => a.code.localeCompare(b.code)));
+    try {
+      await fetch("/api/accounts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(acc),
+      });
+    } catch { await loadAll(); }
     notify({ title: "Account Added", message: `${acc.name} (${acc.code}) added to chart of accounts.`, category: "accounting", priority: "success", actionLabel: "View Accounts", actionModule: "accounting" });
   };
 
-  const handleEditAccount = (acc: Account) => {
+  const handleEditAccount = async (acc: Account) => {
     setAccounts((prev) => prev.map((a) => a.code === acc.code ? acc : a).sort((a, b) => a.code.localeCompare(b.code)));
+    try {
+      await fetch(`/api/accounts/${acc.code}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(acc),
+      });
+    } catch { await loadAll(); }
     notify({ title: "Account Updated", message: `${acc.name} (${acc.code}) has been updated.`, category: "accounting", priority: "success", actionLabel: "View Accounts", actionModule: "accounting" });
   };
 
-  const handleDeleteAccount = (code: string) => {
+  const handleDeleteAccount = async (code: string) => {
     const acc = accounts.find((a) => a.code === code);
     setAccounts((prev) => prev.filter((a) => a.code !== code));
+    await fetch(`/api/accounts/${code}`, { method: "DELETE" });
     if (acc) notify({ title: "Account Removed", message: `${acc.name} (${acc.code}) removed from chart of accounts.`, category: "accounting", priority: "info", actionLabel: "View Accounts", actionModule: "accounting" });
   };
 
-  const handleJournalAdded = (je: JournalEntry) => {
+  const handleJournalAdded = async (je: JournalEntry) => {
     setJournalEntries((prev) => [je, ...prev]);
+    try {
+      await fetch("/api/journal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(je),
+      });
+    } catch { await loadAll(); }
     notify({ title: je.posted ? "Journal Entry Posted" : "Journal Entry Saved as Draft", message: `${je.description} — Dr. ${je.debit} / Cr. ${je.credit} (${formatCurrency(je.amount)}).`, category: "accounting", priority: "success", actionLabel: "View Journal", actionModule: "accounting" });
   };
 
-  const handleEditJournal = (je: JournalEntry) => {
+  const handleEditJournal = async (je: JournalEntry) => {
     setJournalEntries((prev) => prev.map((e) => e.id === je.id ? je : e));
+    try {
+      await fetch(`/api/journal/${je.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(je),
+      });
+    } catch { await loadAll(); }
     notify({ title: "Journal Entry Updated", message: `${je.id}: ${je.description} updated.`, category: "accounting", priority: "success", actionLabel: "View Journal", actionModule: "accounting" });
   };
 
-  const handleDeleteJournal = (id: string) => {
+  const handleDeleteJournal = async (id: string) => {
     const je = journalEntries.find((e) => e.id === id);
     setJournalEntries((prev) => prev.filter((e) => e.id !== id));
+    await fetch(`/api/journal/${id}`, { method: "DELETE" });
     if (je) notify({ title: "Entry Removed", message: `Journal entry ${je.id} deleted.`, category: "accounting", priority: "info", actionLabel: "View Journal", actionModule: "accounting" });
   };
 
-  const handleTogglePostJournal = (id: string) => {
+  const handleTogglePostJournal = async (id: string) => {
+    const je = journalEntries.find((e) => e.id === id);
+    if (!je) return;
     setJournalEntries((prev) => prev.map((e) => e.id === id ? { ...e, posted: !e.posted } : e));
+    await fetch(`/api/journal/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ posted: !je.posted }) });
   };
 
   const navItems: { id: AccView; label: string; icon: React.ElementType }[] = [
@@ -297,6 +394,45 @@ export default function AccountingModule() {
     { id: "journal", label: "Journal", icon: Calculator },
     { id: "reports", label: "Reports", icon: BarChart3 },
   ];
+
+  const monthlyData = useMemo(() => {
+    const now = new Date();
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - (6 - i), 1);
+      const mNum = d.getMonth();
+      const mYear = d.getFullYear();
+      const month = d.toLocaleString("default", { month: "short" });
+      return {
+        month,
+        revenue: invoices
+          .filter((inv) => {
+            const pd = new Date(inv.paidAt || inv.dueDate);
+            return pd.getMonth() === mNum && pd.getFullYear() === mYear && inv.status === "paid";
+          })
+          .reduce((s, inv) => s + inv.amount, 0),
+        expenses: expenses
+          .filter((e) => {
+            const pd = new Date(e.date);
+            return pd.getMonth() === mNum && pd.getFullYear() === mYear && e.status === "approved";
+          })
+          .reduce((s, e) => s + e.amount, 0),
+      };
+    });
+  }, [invoices, expenses]);
+
+  if (loading) {
+    return (
+      <div className="h-[calc(100vh-64px)] flex items-center justify-center">
+        <div className="flex items-center gap-3 text-gray-400">
+          <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+          </svg>
+          Loading accounting data...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-[calc(100vh-64px)] flex flex-col">
@@ -352,7 +488,7 @@ export default function AccountingModule() {
             onDelete={handleDeleteAccount}
           />}
         {view === "journal" && <JournalView entries={journalEntries} accounts={accounts} onAddEntry={() => setShowAddJournal(true)} onView={(je) => setShowViewJournal(je)} onDelete={handleDeleteJournal} onTogglePost={handleTogglePostJournal} />}
-        {view === "reports" && <ReportsView invoices={invoices} expenses={expenses} accounts={accounts} journalEntries={journalEntries} />}
+        {view === "reports" && <ReportsView invoices={invoices} expenses={expenses} accounts={accounts} journalEntries={journalEntries} monthlyData={monthlyData} />}
       </div>
 
       {showCreateInvoice && <InvoiceFormModal key="create" invoice={null} onClose={() => setShowCreateInvoice(false)} onSave={handleInvoiceCreated} />}
@@ -1587,7 +1723,7 @@ function JournalView({ entries, onAddEntry, onView, onDelete, onTogglePost, acco
 }
 
 // ── Reports ───────────────────────────────────────────────────────────────────
-function ReportsView({ invoices, expenses, accounts, journalEntries }: { invoices: Invoice[]; expenses: Expense[]; accounts: Account[]; journalEntries: JournalEntry[] }) {
+function ReportsView({ invoices, expenses, accounts, journalEntries, monthlyData }: { invoices: Invoice[]; expenses: Expense[]; accounts: Account[]; journalEntries: JournalEntry[]; monthlyData: { month: string; revenue: number; expenses: number }[] }) {
   const [activeReport, setActiveReport] = useState<"pl" | "balance" | "cashflow" | "aging" | "trial">("pl");
 
   const totalAssets = accounts.filter((a) => a.type === "Asset").reduce((s, a) => s + a.balance, 0);
@@ -2037,7 +2173,7 @@ function InvoiceFormModal({ invoice, onClose, onSave }: {
     e.preventDefault();
     const validItems = items.filter((i) => i.description.trim() && i.rate > 0);
     if (!validItems.length) return;
-    const id = invoice?.id ?? `INV-${new Date().getFullYear()}-${String(invoiceNextNum++).padStart(3, "0")}`;
+    const id = invoice?.id ?? generateInvoiceNumber();
     onSave({
       id,
       customer: form.customer,
@@ -2358,7 +2494,7 @@ function ExpenseFormModal({ expense, onClose, onSave }: {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const id = expense?.id ?? `EXP-${String(expenseNextNum++).padStart(3, "0")}`;
+    const id = expense?.id ?? crypto.randomUUID();
     onSave({
       id,
       category: form.category,
@@ -2710,7 +2846,7 @@ function JournalEntryFormModal({ entry, onClose, onSave, accounts }: {
     e.preventDefault();
     if (sameAccount || !form.amount) return;
     onSave({
-      id: entry?.id ?? `JE-${String(journalNextNum++).padStart(3, "0")}`,
+      id: entry?.id ?? crypto.randomUUID(),
       date: form.date,
       description: form.description,
       reference: form.reference || "—",

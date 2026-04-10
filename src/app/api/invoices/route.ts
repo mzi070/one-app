@@ -18,16 +18,18 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const invoice = await prisma.invoice.create({
       data: {
-        invoiceNumber: generateInvoiceNumber(),
+        invoiceNumber: body.id || generateInvoiceNumber(),
         type: "receivable",
         customerName: body.customer,
         customerEmail: body.email || null,
-        items: body.description || "[]",
-        subtotal: body.amount,
-        taxAmount: body.amount * 0.05,
-        total: body.amount * 1.05,
+        description: body.description || null,
+        items: JSON.stringify(body.items || []),
+        subtotal: body.subtotal,
+        taxAmount: body.tax ?? 0,
+        total: body.amount,
+        status: body.status || "draft",
+        issueDate: body.issueDate ? new Date(body.issueDate) : new Date(),
         dueDate: new Date(body.dueDate),
-        status: "draft",
       },
     });
     return NextResponse.json(invoice, { status: 201 });
