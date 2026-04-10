@@ -520,9 +520,9 @@ function AccOverview({ invoices, expenses, onNavigate }: { invoices: Invoice[]; 
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: "Revenue (Paid)", value: formatCurrency(totalRevenue), icon: TrendingUp, color: "bg-green-50 text-green-600", note: "+8.2% vs last month" },
-          { label: "Total Expenses", value: formatCurrency(totalExpenses), icon: TrendingDown, color: "bg-red-50 text-red-600", note: "+3.1% vs last month" },
-          { label: "Net Income", value: formatCurrency(totalRevenue - totalExpenses), icon: DollarSign, color: "bg-blue-50 text-blue-600", note: "+15.4% vs last month" },
+          { label: "Revenue (Paid)", value: formatCurrency(totalRevenue), icon: TrendingUp, color: "bg-green-50 text-green-600", note: `${invoices.filter(i => i.status === "paid").length} paid invoice${invoices.filter(i => i.status === "paid").length !== 1 ? "s" : ""}` },
+          { label: "Total Expenses", value: formatCurrency(totalExpenses), icon: TrendingDown, color: "bg-red-50 text-red-600", note: `${expenses.filter(e => e.status === "approved").length} approved expense${expenses.filter(e => e.status === "approved").length !== 1 ? "s" : ""}` },
+          { label: "Net Income", value: formatCurrency(totalRevenue - totalExpenses), icon: DollarSign, color: "bg-blue-50 text-blue-600", note: totalRevenue - totalExpenses >= 0 ? "Profitable" : "Net loss" },
           { label: "Outstanding", value: formatCurrency(receivables), icon: Wallet, color: "bg-orange-50 text-orange-600", note: `${invoices.filter(i => i.status === "sent" || i.status === "overdue").length} invoices` },
         ].map((stat) => {
           const Icon = stat.icon;
@@ -609,13 +609,12 @@ function AccOverview({ invoices, expenses, onNavigate }: { invoices: Invoice[]; 
       </div>
 
       <div className="bg-white rounded-xl border p-5">
-        <h3 className="font-semibold text-gray-800 mb-4">Profit & Loss — April 2026</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <h3 className="font-semibold text-gray-800 mb-4">Profit & Loss — {new Date().toLocaleString("default", { month: "long", year: "numeric" })}</h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           {[
-            { label: "Sales Revenue", value: 128450, color: "text-green-700", bg: "bg-green-50" },
-            { label: "Service Revenue", value: 34200, color: "text-teal-700", bg: "bg-teal-50" },
-            { label: "Total Expenses", value: 116725, color: "text-red-700", bg: "bg-red-50" },
-            { label: "Net Profit", value: 45925, color: "text-blue-700", bg: "bg-blue-50" },
+            { label: "Total Revenue", value: totalRevenue, color: "text-green-700", bg: "bg-green-50" },
+            { label: "Total Expenses", value: totalExpenses, color: "text-red-700", bg: "bg-red-50" },
+            { label: "Net Profit", value: totalRevenue - totalExpenses, color: (totalRevenue - totalExpenses) >= 0 ? "text-blue-700" : "text-red-700", bg: (totalRevenue - totalExpenses) >= 0 ? "bg-blue-50" : "bg-red-50" },
           ].map((s) => (
             <div key={s.label} className={`rounded-xl p-4 text-center ${s.bg}`}>
               <p className="text-xs font-medium text-gray-500 mb-1">{s.label}</p>
@@ -1965,64 +1964,69 @@ function ReportsView({ invoices, expenses, accounts, journalEntries, monthlyData
       )}
 
       {/* Cash Flow */}
-      {activeReport === "cashflow" && (
-        <div className="bg-white rounded-xl border p-5 space-y-5">
-          <div className="flex items-center justify-between">
-            <h4 className="font-semibold text-gray-800">Cash Flow Statement</h4>
-            <button className="text-sm text-orange-600 flex items-center gap-1"><Download size={14} /> PDF</button>
-          </div>
-          {[
-            {
-              title: "Operating Activities", color: "text-green-700", bg: "bg-green-50",
-              items: [
-                { label: "Cash received from customers", amount: 25750, positive: true },
-                { label: "Cash paid to suppliers", amount: 8400, positive: false },
-                { label: "Cash paid for salaries", amount: 14000, positive: false },
-                { label: "Cash paid for operating expenses", amount: 3645, positive: false },
-              ],
-            },
-            {
-              title: "Investing Activities", color: "text-blue-700", bg: "bg-blue-50",
-              items: [
-                { label: "Purchase of equipment", amount: 5000, positive: false },
-                { label: "Sale of investments", amount: 2000, positive: true },
-              ],
-            },
-            {
-              title: "Financing Activities", color: "text-purple-700", bg: "bg-purple-50",
-              items: [
-                { label: "Loan repayment", amount: 1500, positive: false },
-                { label: "Owner contribution", amount: 0, positive: true },
-              ],
-            },
-          ].map((section) => {
-            const net = section.items.reduce((s, i) => i.positive ? s + i.amount : s - i.amount, 0);
-            return (
-              <div key={section.title}>
-                <h5 className="font-semibold text-gray-700 mb-2">{section.title}</h5>
-                <div className="rounded-xl border overflow-hidden">
-                  {section.items.map((item) => (
-                    <div key={item.label} className="flex justify-between px-4 py-2.5 border-b last:border-0 text-sm hover:bg-gray-50">
-                      <span className="text-gray-600">{item.label}</span>
-                      <span className={item.positive ? "text-green-700 font-medium" : "text-red-600 font-medium"}>
-                        {item.positive ? "+" : "-"}{formatCurrency(item.amount)}
-                      </span>
-                    </div>
-                  ))}
-                  <div className={`flex justify-between px-4 py-2.5 font-semibold text-sm ${section.bg}`}>
-                    <span className={section.color}>Net {section.title}</span>
-                    <span className={net >= 0 ? "text-green-700" : "text-red-600"}>{net >= 0 ? "+" : ""}{formatCurrency(net)}</span>
+      {activeReport === "cashflow" && (() => {
+        const cashIn = invoices.filter((i) => i.status === "paid").reduce((s, i) => s + i.amount, 0);
+        const expByCategory = expenses
+          .filter((e) => e.status === "approved")
+          .reduce<Record<string, number>>((acc, e) => { acc[e.category] = (acc[e.category] || 0) + e.amount; return acc; }, {});
+        const totalExpOut = Object.values(expByCategory).reduce((s, v) => s + v, 0);
+        const netOperating = cashIn - totalExpOut;
+        return (
+          <div className="bg-white rounded-xl border p-5 space-y-5">
+            <div className="flex items-center justify-between">
+              <h4 className="font-semibold text-gray-800">Cash Flow Statement</h4>
+            </div>
+            {/* Operating Activities */}
+            <div>
+              <h5 className="font-semibold text-gray-700 mb-2">Operating Activities</h5>
+              <div className="rounded-xl border overflow-hidden">
+                <div className="flex justify-between px-4 py-2.5 border-b text-sm hover:bg-gray-50">
+                  <span className="text-gray-600">Cash received from customers</span>
+                  <span className="text-green-700 font-medium">+{formatCurrency(cashIn)}</span>
+                </div>
+                {Object.entries(expByCategory).length === 0 ? (
+                  <div className="px-4 py-3 text-sm text-gray-400 text-center">No approved expenses</div>
+                ) : Object.entries(expByCategory).map(([cat, amt]) => (
+                  <div key={cat} className="flex justify-between px-4 py-2.5 border-b last:border-0 text-sm hover:bg-gray-50">
+                    <span className="text-gray-600">Cash paid — {cat}</span>
+                    <span className="text-red-600 font-medium">−{formatCurrency(amt)}</span>
                   </div>
+                ))}
+                <div className="flex justify-between px-4 py-2.5 font-semibold text-sm bg-green-50">
+                  <span className="text-green-700">Net Operating Activities</span>
+                  <span className={netOperating >= 0 ? "text-green-700" : "text-red-600"}>{netOperating >= 0 ? "+" : ""}{formatCurrency(netOperating)}</span>
                 </div>
               </div>
-            );
-          })}
-          <div className="flex justify-between px-4 py-3 bg-gray-900 text-white rounded-xl font-bold">
-            <span>Net Change in Cash</span>
-            <span className="text-green-400">+{formatCurrency(5205)}</span>
+            </div>
+            {/* Investing Activities */}
+            <div>
+              <h5 className="font-semibold text-gray-700 mb-2">Investing Activities</h5>
+              <div className="rounded-xl border overflow-hidden">
+                <div className="px-4 py-3 text-sm text-gray-400 text-center">No investing transactions recorded</div>
+                <div className="flex justify-between px-4 py-2.5 font-semibold text-sm bg-blue-50">
+                  <span className="text-blue-700">Net Investing Activities</span>
+                  <span className="text-blue-700">{formatCurrency(0)}</span>
+                </div>
+              </div>
+            </div>
+            {/* Financing Activities */}
+            <div>
+              <h5 className="font-semibold text-gray-700 mb-2">Financing Activities</h5>
+              <div className="rounded-xl border overflow-hidden">
+                <div className="px-4 py-3 text-sm text-gray-400 text-center">No financing transactions recorded</div>
+                <div className="flex justify-between px-4 py-2.5 font-semibold text-sm bg-purple-50">
+                  <span className="text-purple-700">Net Financing Activities</span>
+                  <span className="text-purple-700">{formatCurrency(0)}</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-between px-4 py-3 bg-gray-900 text-white rounded-xl font-bold">
+              <span>Net Change in Cash</span>
+              <span className={netOperating >= 0 ? "text-green-400" : "text-red-400"}>{netOperating >= 0 ? "+" : ""}{formatCurrency(netOperating)}</span>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* AR Aging */}
       {activeReport === "aging" && (
