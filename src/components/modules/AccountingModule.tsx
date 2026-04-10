@@ -167,6 +167,8 @@ export default function AccountingModule() {
   const [showViewExpense, setShowViewExpense] = useState<Expense | null>(null);
   const [showEditAccount, setShowEditAccount] = useState<Account | null>(null);
   const [showViewAccount, setShowViewAccount] = useState<Account | null>(null);
+  const [showViewJournal, setShowViewJournal] = useState<JournalEntry | null>(null);
+  const [showEditJournal, setShowEditJournal] = useState<JournalEntry | null>(null);
   const [invoices, setInvoices] = useState(initialInvoices);
   const [expenses, setExpenses] = useState(initialExpenses);
   const [accounts, setAccounts] = useState(initialAccounts);
@@ -269,7 +271,22 @@ export default function AccountingModule() {
 
   const handleJournalAdded = (je: JournalEntry) => {
     setJournalEntries((prev) => [je, ...prev]);
-    notify({ title: "Journal Entry Posted", message: `${je.description} — Dr. ${je.debit} / Cr. ${je.credit} (${formatCurrency(je.amount)}).`, category: "accounting", priority: "success", actionLabel: "View Journal", actionModule: "accounting" });
+    notify({ title: je.posted ? "Journal Entry Posted" : "Journal Entry Saved as Draft", message: `${je.description} — Dr. ${je.debit} / Cr. ${je.credit} (${formatCurrency(je.amount)}).`, category: "accounting", priority: "success", actionLabel: "View Journal", actionModule: "accounting" });
+  };
+
+  const handleEditJournal = (je: JournalEntry) => {
+    setJournalEntries((prev) => prev.map((e) => e.id === je.id ? je : e));
+    notify({ title: "Journal Entry Updated", message: `${je.id}: ${je.description} updated.`, category: "accounting", priority: "success", actionLabel: "View Journal", actionModule: "accounting" });
+  };
+
+  const handleDeleteJournal = (id: string) => {
+    const je = journalEntries.find((e) => e.id === id);
+    setJournalEntries((prev) => prev.filter((e) => e.id !== id));
+    if (je) notify({ title: "Entry Removed", message: `Journal entry ${je.id} deleted.`, category: "accounting", priority: "info", actionLabel: "View Journal", actionModule: "accounting" });
+  };
+
+  const handleTogglePostJournal = (id: string) => {
+    setJournalEntries((prev) => prev.map((e) => e.id === id ? { ...e, posted: !e.posted } : e));
   };
 
   const navItems: { id: AccView; label: string; icon: React.ElementType }[] = [
@@ -334,8 +351,8 @@ export default function AccountingModule() {
             onView={(acc) => setShowViewAccount(acc)}
             onDelete={handleDeleteAccount}
           />}
-        {view === "journal" && <JournalView entries={journalEntries} onAddEntry={() => setShowAddJournal(true)} accounts={accounts} />}
-        {view === "reports" && <ReportsView invoices={invoices} expenses={expenses} accounts={accounts} />}
+        {view === "journal" && <JournalView entries={journalEntries} accounts={accounts} onAddEntry={() => setShowAddJournal(true)} onView={(je) => setShowViewJournal(je)} onDelete={handleDeleteJournal} onTogglePost={handleTogglePostJournal} />}
+        {view === "reports" && <ReportsView invoices={invoices} expenses={expenses} accounts={accounts} journalEntries={journalEntries} />}
       </div>
 
       {showCreateInvoice && <InvoiceFormModal key="create" invoice={null} onClose={() => setShowCreateInvoice(false)} onSave={handleInvoiceCreated} />}
@@ -348,7 +365,9 @@ export default function AccountingModule() {
       {showAddAccount && <AccountFormModal account={null} onClose={() => setShowAddAccount(false)} onSave={handleAccountAdded} existing={accounts} />}
       {showEditAccount && <AccountFormModal account={showEditAccount} onClose={() => setShowEditAccount(null)} onSave={(acc) => { handleEditAccount(acc); setShowEditAccount(null); }} existing={accounts} />}
       {showViewAccount && <AccountDetailModal account={showViewAccount} onClose={() => setShowViewAccount(null)} onEdit={(acc) => { setShowViewAccount(null); setShowEditAccount(acc); }} onDelete={(code) => { handleDeleteAccount(code); setShowViewAccount(null); }} />}
-      {showAddJournal && <AddJournalModal onClose={() => setShowAddJournal(false)} onAdded={handleJournalAdded} accounts={accounts} />}
+      {showAddJournal && <JournalEntryFormModal entry={null} onClose={() => setShowAddJournal(false)} onSave={handleJournalAdded} accounts={accounts} />}
+      {showEditJournal && <JournalEntryFormModal entry={showEditJournal} onClose={() => setShowEditJournal(null)} onSave={(je) => { handleEditJournal(je); setShowEditJournal(null); }} accounts={accounts} />}
+      {showViewJournal && <JournalEntryDetailModal entry={showViewJournal} onClose={() => setShowViewJournal(null)} onEdit={(je) => { setShowViewJournal(null); setShowEditJournal(je); }} onDelete={(id) => { handleDeleteJournal(id); setShowViewJournal(null); }} onTogglePost={(id) => { handleTogglePostJournal(id); setShowViewJournal((prev) => prev ? { ...prev, posted: !prev.posted } : null); }} />}
     </div>
   );
 }
@@ -1377,77 +1396,177 @@ function ChartOfAccountsView({ accounts, onAddNew, onEdit, onView, onDelete }: {
 }
 
 // ── Journal Entries ───────────────────────────────────────────────────────────
-function JournalView({ entries, onAddEntry }: { entries: JournalEntry[]; onAddEntry: () => void; accounts: Account[] }) {
+function JournalView({ entries, onAddEntry, onView, onDelete, onTogglePost, accounts }: {
+  entries: JournalEntry[];
+  onAddEntry: () => void;
+  onView: (je: JournalEntry) => void;
+  onDelete: (id: string) => void;
+  onTogglePost: (id: string) => void;
+  accounts: Account[];
+}) {
+  void accounts;
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "posted" | "pending">("all");
+  const [sortBy, setSortBy] = useState<"date-desc" | "date-asc" | "amount-desc" | "amount-asc">("date-desc");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
-  const filtered = useMemo(() =>
-    entries.filter((je) =>
-      je.description.toLowerCase().includes(search.toLowerCase()) ||
-      je.reference.toLowerCase().includes(search.toLowerCase()) ||
-      je.debit.toLowerCase().includes(search.toLowerCase()) ||
-      je.credit.toLowerCase().includes(search.toLowerCase())
-    ), [entries, search]);
+  const filtered = useMemo(() => {
+    let list = [...entries];
+    if (statusFilter === "posted") list = list.filter((e) => e.posted);
+    if (statusFilter === "pending") list = list.filter((e) => !e.posted);
+    if (dateFrom) list = list.filter((e) => e.date >= dateFrom);
+    if (dateTo) list = list.filter((e) => e.date <= dateTo);
+    const q = search.toLowerCase();
+    if (q) list = list.filter((e) =>
+      e.description.toLowerCase().includes(q) ||
+      e.reference.toLowerCase().includes(q) ||
+      e.debit.toLowerCase().includes(q) ||
+      e.credit.toLowerCase().includes(q) ||
+      e.id.toLowerCase().includes(q)
+    );
+    list.sort((a, b) => {
+      if (sortBy === "date-desc") return b.date.localeCompare(a.date);
+      if (sortBy === "date-asc") return a.date.localeCompare(b.date);
+      if (sortBy === "amount-desc") return b.amount - a.amount;
+      return a.amount - b.amount;
+    });
+    return list;
+  }, [entries, statusFilter, dateFrom, dateTo, search, sortBy]);
 
-  const postedTotal = entries.filter((e) => e.posted).reduce((s, e) => s + e.amount, 0);
+  const postedEntries = entries.filter((e) => e.posted);
+  const pendingEntries = entries.filter((e) => !e.posted);
+  const postedTotal = postedEntries.reduce((s, e) => s + e.amount, 0);
+
+  const exportCSV = () => {
+    const rows = [
+      ["ID", "Date", "Description", "Reference", "Debit Account", "Credit Account", "Amount", "Status"],
+      ...filtered.map((e) => [e.id, e.date, e.description, e.reference, e.debit, e.credit, e.amount.toFixed(2), e.posted ? "Posted" : "Pending"]),
+    ];
+    const csv = rows.map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    a.download = `journal_entries_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+  };
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <div className="flex items-center justify-between mb-4">
+    <div className="max-w-6xl mx-auto space-y-4">
+      <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold">Journal Entries</h3>
-          <p className="text-xs text-gray-400 mt-0.5">{entries.filter((e) => e.posted).length} posted · {entries.filter((e) => !e.posted).length} pending</p>
+          <p className="text-xs text-gray-400 mt-0.5">{entries.length} total · {postedEntries.length} posted · {pendingEntries.length} pending</p>
         </div>
-        <div className="flex gap-3">
-          <div className="relative">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input type="text" placeholder="Search entries..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8 pr-3 py-1.5 border rounded-lg text-sm w-48 focus:ring-2 focus:ring-orange-400 outline-none" />
+        <button onClick={onAddEntry} className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 flex items-center gap-2 text-sm font-medium">
+          <Plus size={16} /> New Entry
+        </button>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[
+          { label: "Total Entries", value: entries.length.toString(), color: "text-gray-700", bg: "bg-white" },
+          { label: "Posted", value: postedEntries.length.toString(), color: "text-green-700", bg: "bg-green-50" },
+          { label: "Pending / Draft", value: pendingEntries.length.toString(), color: "text-yellow-700", bg: "bg-yellow-50" },
+          { label: "Posted Total", value: formatCurrency(postedTotal), color: "text-orange-700", bg: "bg-orange-50" },
+        ].map((kpi) => (
+          <div key={kpi.label} className={`${kpi.bg} rounded-xl border p-4`}>
+            <p className="text-xs text-gray-400 mb-1">{kpi.label}</p>
+            <p className={`text-xl font-bold ${kpi.color}`}>{kpi.value}</p>
           </div>
-          <button onClick={onAddEntry} className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 flex items-center gap-2 text-sm">
-            <Plus size={16} /> New Entry
-          </button>
-        </div>
+        ))}
       </div>
 
-      <div className="bg-white rounded-xl border p-4 mb-4 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs font-semibold text-gray-400 uppercase">Trial Balance</p>
+      {/* Trial Balance Banner */}
+      <div className="bg-white rounded-xl border p-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs font-semibold text-gray-400 uppercase">Trial Balance (Posted Entries)</p>
         <div className="flex items-center gap-6 text-sm flex-wrap">
-          <span>Total Debits: <span className="font-bold">{formatCurrency(postedTotal)}</span></span>
-          <span>Total Credits: <span className="font-bold">{formatCurrency(postedTotal)}</span></span>
-          <span className="px-2.5 py-0.5 rounded-full text-xs bg-green-100 text-green-700 font-medium">✓ Balanced</span>
+          <span>Total Debits: <span className="font-bold text-green-700">{formatCurrency(postedTotal)}</span></span>
+          <span>Total Credits: <span className="font-bold text-red-600">{formatCurrency(postedTotal)}</span></span>
+          <span className="px-2.5 py-0.5 rounded-full text-xs bg-green-100 text-green-700 font-medium flex items-center gap-1"><CheckCircle size={12} /> Balanced</span>
         </div>
       </div>
 
+      {/* Filters toolbar */}
+      <div className="bg-white rounded-xl border p-3 flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          <span>From:</span>
+          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="px-2 py-1.5 border rounded-lg text-xs focus:ring-2 focus:ring-orange-400 outline-none" />
+          <span>To:</span>
+          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="px-2 py-1.5 border rounded-lg text-xs focus:ring-2 focus:ring-orange-400 outline-none" />
+          {(dateFrom || dateTo) && (
+            <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-orange-600 hover:text-orange-700 underline text-xs">Clear</button>
+          )}
+        </div>
+        <div className="flex gap-1 ml-auto">
+          {(["all", "posted", "pending"] as const).map((s) => (
+            <button key={s} onClick={() => setStatusFilter(s)} className={`px-3 py-1 rounded-full text-xs font-medium ${statusFilter === s ? "bg-orange-100 text-orange-700" : "text-gray-500 hover:bg-gray-100"}`}>
+              {s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
+            </button>
+          ))}
+        </div>
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value as typeof sortBy)} className="px-2 py-1.5 border rounded-lg text-xs focus:ring-2 focus:ring-orange-400 outline-none">
+          <option value="date-desc">Date (Newest)</option>
+          <option value="date-asc">Date (Oldest)</option>
+          <option value="amount-desc">Amount (High→Low)</option>
+          <option value="amount-asc">Amount (Low→High)</option>
+        </select>
+        <div className="relative">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input type="text" placeholder="Search…" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-7 pr-7 py-1.5 border rounded-lg text-xs w-44 focus:ring-2 focus:ring-orange-400 outline-none" />
+          {search && <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={12} /></button>}
+        </div>
+        <button onClick={exportCSV} className="px-3 py-1.5 border rounded-lg text-xs font-medium text-gray-600 hover:bg-gray-50 flex items-center gap-1.5">
+          <Download size={13} /> Export CSV
+        </button>
+      </div>
+
+      {/* Table */}
       <div className="bg-white rounded-xl border overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b">
             <tr>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">ID</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Date</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Description</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Ref</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Debit</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Credit</th>
-              <th className="text-right px-4 py-3 font-medium text-gray-600">Amount</th>
-              <th className="text-center px-4 py-3 font-medium text-gray-600">Status</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">ID</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Date</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Description</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Reference</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Debit</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Credit</th>
+              <th className="text-right px-4 py-3 font-medium text-gray-600 text-xs">Amount</th>
+              <th className="text-center px-4 py-3 font-medium text-gray-600 text-xs">Status</th>
+              <th className="text-center px-4 py-3 font-medium text-gray-600 text-xs">Actions</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={8} className="text-center py-10 text-gray-400">No entries found</td></tr>
+              <tr><td colSpan={9} className="text-center py-12 text-gray-400">No entries match your filters</td></tr>
             )}
             {filtered.map((je) => (
-              <tr key={je.id} className="border-b hover:bg-gray-50">
+              <tr key={je.id} className={`border-b hover:bg-gray-50 transition-colors ${!je.posted ? "opacity-70" : ""}`}>
                 <td className="px-4 py-3 text-gray-400 font-mono text-xs">{je.id}</td>
-                <td className="px-4 py-3 text-xs text-gray-500">{je.date}</td>
-                <td className="px-4 py-3 font-medium">{je.description}</td>
-                <td className="px-4 py-3 text-xs text-gray-400">{je.reference}</td>
-                <td className="px-4 py-3"><span className="px-2 py-0.5 rounded bg-green-50 text-green-700 text-xs font-medium">{je.debit}</span></td>
-                <td className="px-4 py-3"><span className="px-2 py-0.5 rounded bg-red-50 text-red-700 text-xs font-medium">{je.credit}</span></td>
-                <td className="px-4 py-3 text-right font-semibold">{formatCurrency(je.amount)}</td>
+                <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{je.date}</td>
+                <td className="px-4 py-3 font-medium text-sm max-w-[200px] truncate" title={je.description}>{je.description}</td>
+                <td className="px-4 py-3 text-xs text-gray-400 font-mono">{je.reference}</td>
+                <td className="px-4 py-3"><span className="px-2 py-0.5 rounded bg-green-50 text-green-700 text-xs font-medium whitespace-nowrap">{je.debit}</span></td>
+                <td className="px-4 py-3"><span className="px-2 py-0.5 rounded bg-red-50 text-red-700 text-xs font-medium whitespace-nowrap">{je.credit}</span></td>
+                <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatCurrency(je.amount)}</td>
                 <td className="px-4 py-3 text-center">
                   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${je.posted ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
                     {je.posted ? "Posted" : "Pending"}
                   </span>
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center justify-center gap-1">
+                    <button onClick={() => onView(je)} title="View details" className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"><Eye size={14} /></button>
+                    <button
+                      onClick={() => onTogglePost(je.id)}
+                      title={je.posted ? "Unpost (move to draft)" : "Post entry"}
+                      className={`p-1 rounded hover:bg-gray-100 ${je.posted ? "text-green-500 hover:text-green-700" : "text-yellow-500 hover:text-yellow-700"}`}
+                    >
+                      {je.posted ? <CheckCircle size={14} /> : <XCircle size={14} />}
+                    </button>
+                    <button onClick={() => { if (confirm(`Delete journal entry ${je.id}?`)) onDelete(je.id); }} title="Delete" className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500"><Trash2 size={14} /></button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -1455,9 +1574,9 @@ function JournalView({ entries, onAddEntry }: { entries: JournalEntry[]; onAddEn
           {filtered.length > 0 && (
             <tfoot className="bg-gray-50 border-t">
               <tr>
-                <td colSpan={6} className="px-4 py-2.5 text-sm font-semibold text-gray-500 text-right">Total:</td>
-                <td className="px-4 py-2.5 text-right font-bold">{formatCurrency(filtered.reduce((s, je) => s + je.amount, 0))}</td>
-                <td />
+                <td colSpan={6} className="px-4 py-2.5 text-xs font-semibold text-gray-500 text-right">{filtered.length} entr{filtered.length === 1 ? "y" : "ies"} · Total:</td>
+                <td className="px-4 py-2.5 text-right font-bold text-sm tabular-nums">{formatCurrency(filtered.reduce((s, je) => s + je.amount, 0))}</td>
+                <td colSpan={2} />
               </tr>
             </tfoot>
           )}
@@ -1468,26 +1587,56 @@ function JournalView({ entries, onAddEntry }: { entries: JournalEntry[]; onAddEn
 }
 
 // ── Reports ───────────────────────────────────────────────────────────────────
-function ReportsView({ invoices, expenses, accounts }: { invoices: Invoice[]; expenses: Expense[]; accounts: Account[] }) {
-  const [activeReport, setActiveReport] = useState<"pl" | "balance" | "cashflow" | "aging">("pl");
-
-  // expenses reserved for future enhancement
-  void expenses;
+function ReportsView({ invoices, expenses, accounts, journalEntries }: { invoices: Invoice[]; expenses: Expense[]; accounts: Account[]; journalEntries: JournalEntry[] }) {
+  const [activeReport, setActiveReport] = useState<"pl" | "balance" | "cashflow" | "aging" | "trial">("pl");
 
   const totalAssets = accounts.filter((a) => a.type === "Asset").reduce((s, a) => s + a.balance, 0);
   const totalLiabilities = accounts.filter((a) => a.type === "Liability").reduce((s, a) => s + a.balance, 0);
   const totalEquity = accounts.filter((a) => a.type === "Equity").reduce((s, a) => s + a.balance, 0);
   const totalRevenue = accounts.filter((a) => a.type === "Revenue").reduce((s, a) => s + a.balance, 0);
   const totalExpenseAmt = accounts.filter((a) => a.type === "Expense").reduce((s, a) => s + a.balance, 0);
+  const netIncome = totalRevenue - totalExpenseAmt;
+  const grossMargin = totalRevenue > 0 ? ((netIncome / totalRevenue) * 100).toFixed(1) : "0.0";
   const maxMonthly = Math.max(...monthlyData.map((m) => Math.max(m.revenue, m.expenses)));
+
+  const trialAccounts = useMemo(() => {
+    const map: Record<string, { name: string; debits: number; credits: number }> = {};
+    journalEntries.filter((e) => e.posted).forEach((e) => {
+      if (!map[e.debit]) map[e.debit] = { name: e.debit, debits: 0, credits: 0 };
+      if (!map[e.credit]) map[e.credit] = { name: e.credit, debits: 0, credits: 0 };
+      map[e.debit].debits += e.amount;
+      map[e.credit].credits += e.amount;
+    });
+    return Object.values(map).sort((a, b) => a.name.localeCompare(b.name));
+  }, [journalEntries]);
+  const trialDebitTotal = trialAccounts.reduce((s, a) => s + a.debits, 0);
+  const trialCreditTotal = trialAccounts.reduce((s, a) => s + a.credits, 0);
+
+  const expenseByCategory = useMemo(() => {
+    const map: Record<string, number> = {};
+    expenses.filter((e) => e.status === "approved").forEach((e) => { map[e.category] = (map[e.category] || 0) + e.amount; });
+    return Object.entries(map).sort((a, b) => b[1] - a[1]);
+  }, [expenses]);
+  const totalApprovedExpenses = expenseByCategory.reduce((s, [, v]) => s + v, 0);
+
+  const exportTableCSV = (rows: string[][], filename: string) => {
+    const csv = rows.map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    a.download = filename;
+    a.click();
+  };
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">Financial Reports</h3>
-        <button className="px-4 py-2 border rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2">
-          <Download size={16} /> Export All
-        </button>
+        <div>
+          <h3 className="text-lg font-semibold">Financial Reports</h3>
+          <p className="text-xs text-gray-400 mt-0.5">Year to Date · April 2026</p>
+        </div>
+        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${netIncome >= 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+          Net Income: {formatCurrency(netIncome)}
+        </span>
       </div>
 
       <div className="flex gap-2 flex-wrap">
@@ -1496,6 +1645,7 @@ function ReportsView({ invoices, expenses, accounts }: { invoices: Invoice[]; ex
           { id: "balance", label: "Balance Sheet" },
           { id: "cashflow", label: "Cash Flow" },
           { id: "aging", label: "AR Aging" },
+          { id: "trial", label: "Trial Balance" },
         ].map((r) => (
           <button
             key={r.id}
@@ -1510,6 +1660,21 @@ function ReportsView({ invoices, expenses, accounts }: { invoices: Invoice[]; ex
       {/* Profit & Loss */}
       {activeReport === "pl" && (
         <div className="space-y-4">
+          {/* KPI Summary */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { label: "Total Revenue", value: formatCurrency(totalRevenue), color: "text-green-700", bg: "bg-green-50" },
+              { label: "Total Expenses", value: formatCurrency(totalExpenseAmt), color: "text-red-600", bg: "bg-red-50" },
+              { label: "Net Income", value: formatCurrency(netIncome), color: netIncome >= 0 ? "text-green-700" : "text-red-600", bg: netIncome >= 0 ? "bg-green-50" : "bg-red-50" },
+              { label: "Profit Margin", value: `${grossMargin}%`, color: parseFloat(grossMargin) >= 0 ? "text-orange-600" : "text-red-600", bg: "bg-orange-50" },
+            ].map((kpi) => (
+              <div key={kpi.label} className={`${kpi.bg} rounded-xl border p-4`}>
+                <p className="text-xs text-gray-400 mb-1">{kpi.label}</p>
+                <p className={`text-xl font-bold ${kpi.color}`}>{kpi.value}</p>
+              </div>
+            ))}
+          </div>
+
           <div className="bg-white rounded-xl border p-5">
             <div className="flex items-center justify-between mb-5">
               <h4 className="font-semibold text-gray-800">Revenue vs Expenses (Last 7 Months)</h4>
@@ -1539,10 +1704,11 @@ function ReportsView({ invoices, expenses, accounts }: { invoices: Invoice[]; ex
             </div>
           </div>
 
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="bg-white rounded-xl border p-5">
             <div className="flex items-center justify-between mb-4">
               <h4 className="font-semibold text-gray-800">Income Statement (YTD)</h4>
-              <button className="text-sm text-orange-600 flex items-center gap-1 hover:text-orange-700"><Download size={14} /> PDF</button>
+              <button onClick={() => exportTableCSV([["Account","Amount"],...accounts.filter((a)=>a.type==="Revenue").map((a)=>[a.code+" · "+a.name,a.balance.toFixed(2)]),["Total Revenue",totalRevenue.toFixed(2)],...accounts.filter((a)=>a.type==="Expense").map((a)=>[a.code+" · "+a.name,(-a.balance).toFixed(2)]),["Total Expenses",(-totalExpenseAmt).toFixed(2)],["Net Income",netIncome.toFixed(2)]], "income_statement.csv")} className="text-sm text-orange-600 flex items-center gap-1 hover:text-orange-700"><Download size={14} /> CSV</button>
             </div>
             <div className="space-y-0.5">
               <div className="flex justify-between pb-2 border-b mb-1">
@@ -1570,11 +1736,39 @@ function ReportsView({ invoices, expenses, accounts }: { invoices: Invoice[]; ex
               <div className="flex justify-between py-2 px-2 font-semibold text-sm border-t">
                 <span>Total Expenses</span><span className="text-red-600">({formatCurrency(totalExpenseAmt)})</span>
               </div>
-              <div className={`flex justify-between py-3 px-3 rounded-xl font-bold text-base mt-2 ${totalRevenue - totalExpenseAmt >= 0 ? "bg-green-50" : "bg-red-50"}`}>
+              <div className={`flex justify-between py-3 px-3 rounded-xl font-bold text-base mt-2 ${netIncome >= 0 ? "bg-green-50" : "bg-red-50"}`}>
                 <span>Net Income</span>
-                <span className={totalRevenue - totalExpenseAmt >= 0 ? "text-green-700" : "text-red-700"}>{formatCurrency(totalRevenue - totalExpenseAmt)}</span>
+                <span className={netIncome >= 0 ? "text-green-700" : "text-red-700"}>{formatCurrency(netIncome)}</span>
               </div>
             </div>
+          </div>
+
+          {/* Expense Breakdown by Category */}
+          {expenseByCategory.length > 0 && (
+            <div className="bg-white rounded-xl border p-5">
+              <h4 className="font-semibold text-gray-800 mb-4">Expense Breakdown (Approved)</h4>
+              <div className="space-y-2.5">
+                {expenseByCategory.map(([cat, amt]) => {
+                  const pct = totalApprovedExpenses > 0 ? (amt / totalApprovedExpenses) * 100 : 0;
+                  return (
+                    <div key={cat}>
+                      <div className="flex justify-between text-sm mb-0.5">
+                        <span className="text-gray-600">{cat}</span>
+                        <span className="font-medium">{formatCurrency(amt)} <span className="text-gray-400 font-normal text-xs">({pct.toFixed(0)}%)</span></span>
+                      </div>
+                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-orange-400 rounded-full" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+                <div className="flex justify-between text-sm font-semibold pt-2 border-t mt-2">
+                  <span>Total Approved</span>
+                  <span className="text-red-600">{formatCurrency(totalApprovedExpenses)}</span>
+                </div>
+              </div>
+            </div>
+          )}
           </div>
         </div>
       )}
@@ -1585,7 +1779,7 @@ function ReportsView({ invoices, expenses, accounts }: { invoices: Invoice[]; ex
           <div className="bg-white rounded-xl border p-5">
             <div className="flex items-center justify-between mb-4">
               <h4 className="font-semibold text-gray-800">Assets</h4>
-              <button className="text-sm text-orange-600 flex items-center gap-1"><Download size={14} /> PDF</button>
+              <button onClick={() => exportTableCSV([["Account","Balance"],...accounts.filter((a)=>a.type==="Asset").map((a)=>[a.code+" · "+a.name,a.balance.toFixed(2)]),[ "Total Assets",totalAssets.toFixed(2)]], "assets.csv")} className="text-sm text-orange-600 flex items-center gap-1"><Download size={14} /> CSV</button>
             </div>
             {accounts.filter((a) => a.type === "Asset").map((a) => (
               <div key={a.code} className="flex justify-between py-2 px-2 hover:bg-gray-50 rounded text-sm">
@@ -1744,6 +1938,63 @@ function ReportsView({ invoices, expenses, accounts }: { invoices: Invoice[]; ex
               </tfoot>
             )}
           </table>
+        </div>
+      )}
+
+      {/* Trial Balance */}
+      {activeReport === "trial" && (
+        <div className="bg-white rounded-xl border p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h4 className="font-semibold text-gray-800">Trial Balance</h4>
+              <p className="text-xs text-gray-400 mt-0.5">Aggregated from posted journal entries</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${Math.abs(trialDebitTotal - trialCreditTotal) < 0.01 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                {Math.abs(trialDebitTotal - trialCreditTotal) < 0.01 ? "✓ Balanced" : "⚠ Unbalanced"}
+              </span>
+              <button onClick={() => exportTableCSV([["Account","Debits","Credits","Net"],...trialAccounts.map((a)=>[a.name,a.debits.toFixed(2),a.credits.toFixed(2),(a.debits-a.credits).toFixed(2)]),[ "TOTALS",trialDebitTotal.toFixed(2),trialCreditTotal.toFixed(2),(trialDebitTotal-trialCreditTotal).toFixed(2)]], "trial_balance.csv")} className="text-sm text-orange-600 flex items-center gap-1"><Download size={14} /> CSV</button>
+            </div>
+          </div>
+          {trialAccounts.length === 0 ? (
+            <div className="text-center py-10 text-gray-400">No posted journal entries yet</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Account</th>
+                  <th className="text-right px-4 py-3 font-medium text-gray-600">Debits</th>
+                  <th className="text-right px-4 py-3 font-medium text-gray-600">Credits</th>
+                  <th className="text-right px-4 py-3 font-medium text-gray-600">Net</th>
+                </tr>
+              </thead>
+              <tbody>
+                {trialAccounts.map((a) => {
+                  const net = a.debits - a.credits;
+                  return (
+                    <tr key={a.name} className="border-b hover:bg-gray-50">
+                      <td className="px-4 py-3 font-medium">{a.name}</td>
+                      <td className="px-4 py-3 text-right text-green-700">{a.debits > 0 ? formatCurrency(a.debits) : "—"}</td>
+                      <td className="px-4 py-3 text-right text-red-600">{a.credits > 0 ? formatCurrency(a.credits) : "—"}</td>
+                      <td className={`px-4 py-3 text-right font-semibold ${net > 0 ? "text-green-700" : net < 0 ? "text-red-600" : "text-gray-400"}`}>
+                        {net !== 0 ? (net > 0 ? "+" : "") + formatCurrency(Math.abs(net)) : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot className="border-t-2 bg-gray-50">
+                <tr>
+                  <td className="px-4 py-3 font-bold text-sm">Totals</td>
+                  <td className="px-4 py-3 text-right font-bold text-green-700">{formatCurrency(trialDebitTotal)}</td>
+                  <td className="px-4 py-3 text-right font-bold text-red-600">{formatCurrency(trialCreditTotal)}</td>
+                  <td className={`px-4 py-3 text-right font-bold ${Math.abs(trialDebitTotal - trialCreditTotal) < 0.01 ? "text-green-700" : "text-red-600"}`}>
+                    {Math.abs(trialDebitTotal - trialCreditTotal) < 0.01 ? "Balanced" : formatCurrency(Math.abs(trialDebitTotal - trialCreditTotal))}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          )}
         </div>
       )}
     </div>
@@ -2361,73 +2612,175 @@ function AccountFormModal({ account, onClose, onSave, existing }: {
 }
 
 
-function AddJournalModal({ onClose, onAdded, accounts }: { onClose: () => void; onAdded: (je: JournalEntry) => void; accounts: Account[] }) {
-  const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), description: "", reference: "", debit: "", credit: "", amount: "" });
+function JournalEntryDetailModal({ entry: je, onClose, onEdit, onDelete, onTogglePost }: {
+  entry: JournalEntry;
+  onClose: () => void;
+  onEdit: (je: JournalEntry) => void;
+  onDelete: (id: string) => void;
+  onTogglePost: (id: string) => void;
+}) {
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between p-5 border-b">
+          <div>
+            <p className="font-mono text-xs text-gray-400 mb-0.5">{je.id}</p>
+            <h3 className="text-lg font-bold text-gray-800">{je.description}</h3>
+          </div>
+          <div className="flex items-center gap-1">
+            <button onClick={() => onEdit(je)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500" title="Edit"><Edit3 size={15} /></button>
+            <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 ml-1"><X size={18} /></button>
+          </div>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-gray-50 rounded-xl p-3">
+              <p className="text-xs text-gray-400 mb-1">Date</p>
+              <p className="text-sm font-semibold">{je.date}</p>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-3">
+              <p className="text-xs text-gray-400 mb-1">Reference</p>
+              <p className="text-sm font-mono">{je.reference}</p>
+            </div>
+            <div className="col-span-2 bg-gray-50 rounded-xl p-3">
+              <p className="text-xs text-gray-400 mb-1">Amount</p>
+              <p className="text-2xl font-bold text-gray-900">{formatCurrency(je.amount)}</p>
+            </div>
+          </div>
+          <div className="rounded-xl border overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 bg-green-50 border-b">
+              <span className="text-xs font-semibold text-green-600 uppercase">Debit Account</span>
+              <span className="text-sm font-semibold text-green-700">{je.debit}</span>
+            </div>
+            <div className="flex items-center justify-between px-4 py-3 bg-red-50">
+              <span className="text-xs font-semibold text-red-600 uppercase">Credit Account</span>
+              <span className="text-sm font-semibold text-red-700">{je.credit}</span>
+            </div>
+          </div>
+          <div className="flex items-center justify-between px-1">
+            <span className="text-sm text-gray-500">Status</span>
+            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${je.posted ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
+              {je.posted ? "Posted" : "Pending / Draft"}
+            </span>
+          </div>
+          <div className="flex gap-2 pt-1 border-t">
+            <button
+              onClick={() => { onTogglePost(je.id); onClose(); }}
+              className={`flex-1 py-2.5 border rounded-xl text-sm font-medium flex items-center justify-center gap-1.5 ${je.posted ? "text-yellow-700 border-yellow-200 hover:bg-yellow-50" : "text-green-700 border-green-200 hover:bg-green-50"}`}
+            >
+              {je.posted ? <><XCircle size={14} /> Unpost</> : <><CheckCircle size={14} /> Post</>}
+            </button>
+            <button onClick={() => onEdit(je)} className="flex-1 py-2.5 border rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center justify-center gap-1.5">
+              <Edit3 size={14} /> Edit
+            </button>
+            <button
+              onClick={() => { if (confirm(`Delete journal entry ${je.id}?`)) { onDelete(je.id); onClose(); } }}
+              className="flex-1 py-2.5 border border-red-200 text-red-600 hover:bg-red-50 rounded-xl text-sm font-medium flex items-center justify-center gap-1.5"
+            >
+              <Trash2 size={14} /> Delete
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function JournalEntryFormModal({ entry, onClose, onSave, accounts }: {
+  entry: JournalEntry | null;
+  onClose: () => void;
+  onSave: (je: JournalEntry) => void;
+  accounts: Account[];
+}) {
+  const [form, setForm] = useState({
+    date: entry?.date ?? new Date().toISOString().slice(0, 10),
+    description: entry?.description ?? "",
+    reference: entry?.reference === "—" ? "" : (entry?.reference ?? ""),
+    debit: entry?.debit ?? "",
+    credit: entry?.credit ?? "",
+    amount: entry?.amount.toString() ?? "",
+    posted: entry?.posted ?? true,
+  });
+  const sf = <K extends keyof typeof form>(k: K, v: typeof form[K]) => setForm((p) => ({ ...p, [k]: v }));
+
   const sameAccount = form.debit && form.credit && form.debit === form.credit;
+  const activeAccounts = accounts.filter((a) => a.isActive !== false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (sameAccount) return;
-    onAdded({
-      id: `JE-${String(journalNextNum++).padStart(3, "0")}`,
+    if (sameAccount || !form.amount) return;
+    onSave({
+      id: entry?.id ?? `JE-${String(journalNextNum++).padStart(3, "0")}`,
       date: form.date,
       description: form.description,
       reference: form.reference || "—",
       debit: form.debit,
       credit: form.credit,
       amount: parseFloat(form.amount),
-      posted: true,
+      posted: form.posted,
     });
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 max-w-md w-full space-y-4">
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 max-w-md w-full max-h-[92vh] overflow-y-auto shadow-2xl space-y-4" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
-          <h3 className="text-lg font-bold">New Journal Entry</h3>
-          <button type="button" onClick={onClose} className="p-1 rounded hover:bg-gray-100"><X size={20} /></button>
+          <h3 className="text-lg font-bold">{entry ? `Edit Entry ${entry.id}` : "New Journal Entry"}</h3>
+          <button type="button" onClick={onClose} className="p-1.5 rounded hover:bg-gray-100"><X size={20} /></button>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-xs font-medium text-gray-600">Date *</label>
-            <input required type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-orange-400 outline-none" />
+            <label className="text-xs font-medium text-gray-600 block mb-1">Date *</label>
+            <input required type="date" value={form.date} onChange={(e) => sf("date", e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-orange-400 outline-none" />
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-600">Reference</label>
-            <input value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} placeholder="INV-xxx" className="w-full mt-1 px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-orange-400 outline-none" />
+            <label className="text-xs font-medium text-gray-600 block mb-1">Reference</label>
+            <input value={form.reference} onChange={(e) => sf("reference", e.target.value)} placeholder="INV-xxx / EXP-xxx" className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-orange-400 outline-none" />
           </div>
         </div>
+
         <div>
-          <label className="text-xs font-medium text-gray-600">Description *</label>
-          <input required value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Transaction description" className="w-full mt-1 px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-orange-400 outline-none" />
+          <label className="text-xs font-medium text-gray-600 block mb-1">Description *</label>
+          <input required value={form.description} onChange={(e) => sf("description", e.target.value)} placeholder="Transaction description" className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-orange-400 outline-none" />
         </div>
+
         <div className="border rounded-xl p-3 space-y-3 bg-gray-50">
           <p className="text-xs font-semibold text-gray-400 uppercase">Double Entry</p>
           <div>
-            <label className="text-xs font-medium text-green-700">Debit Account *</label>
-            <select required value={form.debit} onChange={(e) => setForm({ ...form, debit: e.target.value })} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white focus:ring-2 focus:ring-green-400 outline-none">
+            <label className="text-xs font-semibold text-green-700 block mb-1">Debit Account *</label>
+            <select required value={form.debit} onChange={(e) => sf("debit", e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm bg-white focus:ring-2 focus:ring-green-400 outline-none">
               <option value="">Select account…</option>
-              {accounts.map((a) => <option key={a.code} value={a.name}>{a.code} · {a.name}</option>)}
+              {activeAccounts.map((a) => <option key={a.code} value={a.name}>{a.code} · {a.name} ({a.type})</option>)}
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-red-700">Credit Account *</label>
-            <select required value={form.credit} onChange={(e) => setForm({ ...form, credit: e.target.value })} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white focus:ring-2 focus:ring-red-400 outline-none">
+            <label className="text-xs font-semibold text-red-700 block mb-1">Credit Account *</label>
+            <select required value={form.credit} onChange={(e) => sf("credit", e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm bg-white focus:ring-2 focus:ring-red-400 outline-none">
               <option value="">Select account…</option>
-              {accounts.map((a) => <option key={a.code} value={a.name}>{a.code} · {a.name}</option>)}
+              {activeAccounts.map((a) => <option key={a.code} value={a.name}>{a.code} · {a.name} ({a.type})</option>)}
             </select>
           </div>
-          {sameAccount && <p className="text-xs text-red-500">Debit and credit accounts must be different</p>}
+          {sameAccount && <p className="text-xs text-red-500">Debit and credit accounts must differ</p>}
           <div>
-            <label className="text-xs font-medium text-gray-600">Amount ($) *</label>
-            <input required type="number" step="0.01" min="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="0.00" className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-400 outline-none" />
+            <label className="text-xs font-medium text-gray-600 block mb-1">Amount ($) *</label>
+            <input required type="number" step="0.01" min="0.01" value={form.amount} onChange={(e) => sf("amount", e.target.value)} placeholder="0.00" className="w-full px-3 py-2 border rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-400 outline-none" />
           </div>
         </div>
-        <button type="submit" disabled={!!sameAccount} className="w-full py-2.5 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white rounded-xl font-medium text-sm">
-          Post Journal Entry
-        </button>
+
+        <label className="flex items-center gap-2.5 cursor-pointer">
+          <input type="checkbox" checked={form.posted} onChange={(e) => sf("posted", e.target.checked)} className="w-4 h-4 accent-orange-600 rounded" />
+          <span className="text-sm text-gray-700">Post immediately <span className="text-xs text-gray-400">(uncheck to save as draft)</span></span>
+        </label>
+
+        <div className="flex gap-3">
+          <button type="button" onClick={onClose} className="flex-1 py-2.5 border rounded-xl text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
+          <button type="submit" disabled={!!sameAccount} className="flex-1 py-2.5 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white rounded-xl font-medium text-sm">
+            {entry ? "Save Changes" : (form.posted ? "Post Entry" : "Save as Draft")}
+          </button>
+        </div>
       </form>
     </div>
   );
 }
+
