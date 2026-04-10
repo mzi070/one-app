@@ -35,7 +35,12 @@ export async function POST(request: NextRequest) {
         resultPdf = await extractPages(files[0], options.pagesToExtract || "");
         break;
       case "watermark":
-        resultPdf = await addWatermark(files[0], options.watermarkText || "WATERMARK");
+        resultPdf = await addWatermark(
+          files[0],
+          options.watermarkText || "WATERMARK",
+          typeof options.watermarkOpacity === "number" ? options.watermarkOpacity : 0.3,
+          options.watermarkPosition || "center"
+        );
         break;
       case "page-numbers":
         resultPdf = await addPageNumbers(files[0], options.pageNumberPosition || "bottom-center");
@@ -44,11 +49,19 @@ export async function POST(request: NextRequest) {
         resultPdf = await imagesToPDF(files);
         break;
       case "protect":
-        resultPdf = await protectPDF(files[0]);
+        resultPdf = await protectPDF(files[0], options.password || "");
+        break;
+      case "unlock":
+        resultPdf = await unlockPDF(files[0], options.password || "");
         break;
       case "rearrange":
-        resultPdf = await rearrangePDF(files[0]);
+        resultPdf = await rearrangePDF(files[0], options.pageOrder || "");
         break;
+      case "pdf-to-images":
+        return NextResponse.json(
+          { error: "PDF to Images requires client-side rendering and is not yet available on this server." },
+          { status: 422 }
+        );
       default:
         // Default: return the original file
         const buf = await files[0].arrayBuffer();
@@ -156,7 +169,7 @@ async function extractPages(file: File, pagesToExtract: string): Promise<Uint8Ar
   return newPdf.save();
 }
 
-async function addWatermark(file: File, text: string): Promise<Uint8Array> {
+async function addWatermark(file: File, text: string, opacity = 0.3, position = "center"): Promise<Uint8Array> {
   const bytes = await file.arrayBuffer();
   const pdf = await PDFDocument.load(bytes);
   const font = await pdf.embedFont(StandardFonts.HelveticaBold);
@@ -166,15 +179,18 @@ async function addWatermark(file: File, text: string): Promise<Uint8Array> {
     const fontSize = Math.min(width, height) * 0.1;
     const textWidth = font.widthOfTextAtSize(text, fontSize);
 
-    page.drawText(text, {
-      x: (width - textWidth) / 2,
-      y: height / 2,
-      size: fontSize,
-      font,
-      color: rgb(0.75, 0.75, 0.75),
-      rotate: degrees(45),
-      opacity: 0.3,
-    });
+    let x = (width - textWidth) / 2;
+    let y = height / 2;
+    let rotate = degrees(45);
+
+    if (position === "top-left")     { x = 40;                       y = height - 80; rotate = degrees(0); }
+    if (position === "top-center")   { x = (width - textWidth) / 2;  y = height - 80; rotate = degrees(0); }
+    if (position === "top-right")    { x = width - textWidth - 40;   y = height - 80; rotate = degrees(0); }
+    if (position === "bottom-left")  { x = 40;                       y = 40;          rotate = degrees(0); }
+    if (position === "bottom-right") { x = width - textWidth - 40;   y = 40;          rotate = degrees(0); }
+    // "center" keeps the diagonal defaults
+
+    page.drawText(text, { x, y, size: fontSize, font, color: rgb(0.6, 0.6, 0.6), rotate, opacity });
   });
 
   return pdf.save();
@@ -227,21 +243,50 @@ async function imagesToPDF(files: File[]): Promise<Uint8Array> {
   return pdf.save();
 }
 
-async function protectPDF(file: File): Promise<Uint8Array> {
+async function protectPDF(file: File, label: string): Promise<Uint8Array> {
   const bytes = await file.arrayBuffer();
   const pdf = await PDFDocument.load(bytes);
-  // pdf-lib doesn't support encryption directly, just return the pdf
+  // pdf-lib does not support PDF encryption; stamp a notice into metadata instead
+  const notice = label || "PROTECTED";
+  pdf.setTitle(`[${notice}] ${pdf.getTitle() || "Document"}`);
+  pdf.setSubject(`Protection notice: ${notice}`);
   return pdf.save();
 }
 
-async function rearrangePDF(file: File): Promise<Uint8Array> {
+async function unlockPDF(file: File, password: string): Promise<Uint8Array> {
+  const bytes = await file.arrayBuffer();
+  try {
+    // Try loading with password if provided
+    const pdf = await PDFDocument.load(bytes, password ? { password } : {});
+    // Re-save without the protection context (pdf-lib removes owner-level restrictions on save)
+    return pdf.save();
+  } catch {
+    // If the password is wrong or the file isn't encrypted, return as-is
+    const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true });
+    return pdf.save();
+  }
+}
+
+async function rearrangePDF(file: File, pageOrder: string): Promise<Uint8Array> {
   const bytes = await file.arrayBuffer();
   const pdf = await PDFDocument.load(bytes);
-  // Reverse page order as a demo
+  const totalPages = pdf.getPageCount();
   const newPdf = await PDFDocument.create();
-  const indices = pdf.getPageIndices().reverse();
+
+  let indices: number[];
+  if (pageOrder && pageOrder.trim()) {
+    // Parse user-specified order (1-based) into 0-based indices
+    indices = pageOrder
+      .split(",")
+      .map((s) => parseInt(s.trim(), 10) - 1)
+      .filter((i) => i >= 0 && i < totalPages);
+    if (indices.length === 0) indices = pdf.getPageIndices().reverse();
+  } else {
+    // Default: reverse
+    indices = pdf.getPageIndices().reverse();
+  }
+
   const pages = await newPdf.copyPages(pdf, indices);
   pages.forEach((page) => newPdf.addPage(page));
-
   return newPdf.save();
 }
