@@ -29,6 +29,9 @@ import {
   Printer,
   CreditCard,
   Mail,
+  RotateCcw,
+  Tag,
+  Filter,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 
@@ -58,6 +61,8 @@ interface Expense {
   date: string;
   vendor: string;
   status: "approved" | "pending" | "rejected";
+  notes?: string;
+  receipt?: string;
 }
 
 interface Account {
@@ -139,6 +144,7 @@ const monthlyData = [
 ];
 
 let invoiceNextNum = 8;
+let expenseNextNum = 9;
 let journalNextNum = 9;
 
 // ── Root Component ────────────────────────────────────────────────────────────
@@ -151,6 +157,8 @@ export default function AccountingModule() {
   const [showEditInvoice, setShowEditInvoice] = useState<Invoice | null>(null);
   const [showSendInvoice, setShowSendInvoice] = useState<Invoice | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState<Invoice | null>(null);
+  const [showEditExpense, setShowEditExpense] = useState<Expense | null>(null);
+  const [showViewExpense, setShowViewExpense] = useState<Expense | null>(null);
   const [invoices, setInvoices] = useState(initialInvoices);
   const [expenses, setExpenses] = useState(initialExpenses);
   const [accounts, setAccounts] = useState(initialAccounts);
@@ -213,7 +221,21 @@ export default function AccountingModule() {
   };
 
   const handleDeleteExpense = (id: string) => {
+    const exp = expenses.find((e) => e.id === id);
     setExpenses((prev) => prev.filter((e) => e.id !== id));
+    if (exp) notify({ title: "Expense Deleted", message: `${exp.description} (${formatCurrency(exp.amount)}) deleted.`, category: "accounting", priority: "info", actionLabel: "View Expenses", actionModule: "accounting" });
+  };
+
+  const handleEditExpense = (exp: Expense) => {
+    setExpenses((prev) => prev.map((e) => e.id === exp.id ? exp : e));
+    notify({ title: "Expense Updated", message: `${exp.description} (${formatCurrency(exp.amount)}) updated and resubmitted for approval.`, category: "accounting", priority: "success", actionLabel: "View Expenses", actionModule: "accounting" });
+  };
+
+  const handleResubmitExpense = (id: string) => {
+    const exp = expenses.find((e) => e.id === id);
+    if (!exp) return;
+    setExpenses((prev) => prev.map((e) => e.id === id ? { ...e, status: "pending" } : e));
+    notify({ title: "Expense Resubmitted", message: `${exp.description} (${formatCurrency(exp.amount)}) resubmitted for approval.`, category: "accounting", priority: "info", actionLabel: "View Expenses", actionModule: "accounting" });
   };
 
   const handleExpenseAdded = (exp: Expense) => {
@@ -281,6 +303,9 @@ export default function AccountingModule() {
             onApprove={handleApproveExpense}
             onReject={handleRejectExpense}
             onDelete={handleDeleteExpense}
+            onEdit={(exp) => setShowEditExpense(exp)}
+            onView={(exp) => setShowViewExpense(exp)}
+            onResubmit={handleResubmitExpense}
           />
         )}
         {view === "accounts" && <ChartOfAccountsView accounts={accounts} onAddAccount={() => setShowAddAccount(true)} />}
@@ -292,7 +317,9 @@ export default function AccountingModule() {
       {showEditInvoice && <InvoiceFormModal key="edit" invoice={showEditInvoice} onClose={() => setShowEditInvoice(null)} onSave={(inv) => { handleEditInvoice(inv); setShowEditInvoice(null); }} />}
       {showSendInvoice && <SendInvoiceModal invoice={showSendInvoice} onClose={() => setShowSendInvoice(null)} onSend={(id) => { handleSendInvoice(id); setShowSendInvoice(null); }} />}
       {showPaymentModal && <RecordPaymentModal invoice={showPaymentModal} onClose={() => setShowPaymentModal(null)} onRecord={(id, date, method, notes) => { handleMarkPaid(id, date, method, notes); setShowPaymentModal(null); }} />}
-      {showAddExpense && <AddExpenseModal onClose={() => setShowAddExpense(false)} onAdded={handleExpenseAdded} />}
+      {showAddExpense && <ExpenseFormModal expense={null} onClose={() => setShowAddExpense(false)} onSave={handleExpenseAdded} />}
+      {showEditExpense && <ExpenseFormModal expense={showEditExpense} onClose={() => setShowEditExpense(null)} onSave={(exp) => { handleEditExpense(exp); setShowEditExpense(null); }} />}
+      {showViewExpense && <ExpenseDetailModal expense={showViewExpense} onClose={() => setShowViewExpense(null)} onApprove={() => { handleApproveExpense(showViewExpense.id); setShowViewExpense(null); }} onReject={() => { handleRejectExpense(showViewExpense.id); setShowViewExpense(null); }} onEdit={(exp) => { setShowViewExpense(null); setShowEditExpense(exp); }} onDelete={(id) => { handleDeleteExpense(id); setShowViewExpense(null); }} onResubmit={() => { handleResubmitExpense(showViewExpense.id); setShowViewExpense(null); }} />}
       {showAddAccount && <AddAccountModal onClose={() => setShowAddAccount(false)} onAdded={handleAccountAdded} existing={accounts} />}
       {showAddJournal && <AddJournalModal onClose={() => setShowAddJournal(false)} onAdded={handleJournalAdded} accounts={accounts} />}
     </div>
@@ -809,115 +836,252 @@ function InvoiceDetailModal({ invoice: inv, onClose, onEdit, onSend, onPayment, 
 }
 
 // ── Expenses ──────────────────────────────────────────────────────────────────
-function ExpensesView({ expenses, onAddNew, onApprove, onReject, onDelete }: {
+function ExpensesView({ expenses, onAddNew, onApprove, onReject, onDelete, onEdit, onView, onResubmit }: {
   expenses: Expense[];
   onAddNew: () => void;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
   onDelete: (id: string) => void;
+  onEdit: (exp: Expense) => void;
+  onView: (exp: Expense) => void;
+  onResubmit: (id: string) => void;
 }) {
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [sortBy, setSortBy] = useState<"date-desc" | "date-asc" | "amount-desc" | "amount-asc" | "category">("date-desc");
+  const [dateRange, setDateRange] = useState("all");
+  const [showAnalytics, setShowAnalytics] = useState(true);
 
-  const categories = useMemo(() => ["all", ...Array.from(new Set(expenses.map((e) => e.category)))], [expenses]);
+  const CATEGORIES = ["Office Supplies", "Software", "Travel", "Marketing", "Utilities", "Maintenance", "Salaries", "Rent", "Other"];
 
-  const filtered = useMemo(() =>
-    expenses.filter((e) =>
-      (catFilter === "all" || e.category === catFilter) &&
-      (statusFilter === "all" || e.status === statusFilter) &&
-      (e.description.toLowerCase().includes(search.toLowerCase()) || e.vendor.toLowerCase().includes(search.toLowerCase()))
-    ), [expenses, catFilter, statusFilter, search]);
-
-  const totalApproved = useMemo(() => expenses.filter((e) => e.status === "approved").reduce((s, e) => s + e.amount, 0), [expenses]);
-  const totalPending = useMemo(() => expenses.filter((e) => e.status === "pending").reduce((s, e) => s + e.amount, 0), [expenses]);
-  const totalRejected = useMemo(() => expenses.filter((e) => e.status === "rejected").reduce((s, e) => s + e.amount, 0), [expenses]);
-  const topCategory = useMemo(() => {
-    const byCategory: Record<string, number> = {};
-    expenses.filter((e) => e.status === "approved").forEach((e) => { byCategory[e.category] = (byCategory[e.category] || 0) + e.amount; });
-    return Object.entries(byCategory).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "—";
+  const categories = useMemo(() => {
+    const fromData = Array.from(new Set(expenses.map((e) => e.category)));
+    const merged = Array.from(new Set([...fromData, ...CATEGORIES])).sort();
+    return ["all", ...merged];
   }, [expenses]);
+
+  const today = new Date();
+  const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
+  const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1).toISOString().slice(0, 10);
+  const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0).toISOString().slice(0, 10);
+  const thisQtrStart = new Date(today.getFullYear(), Math.floor(today.getMonth() / 3) * 3, 1).toISOString().slice(0, 10);
+
+  const filtered = useMemo(() => {
+    let list = expenses.filter((e) => {
+      if (catFilter !== "all" && e.category !== catFilter) return false;
+      if (statusFilter !== "all" && e.status !== statusFilter) return false;
+      if (search && !e.description.toLowerCase().includes(search.toLowerCase()) && !e.vendor.toLowerCase().includes(search.toLowerCase()) && !e.id.toLowerCase().includes(search.toLowerCase())) return false;
+      if (dateRange === "this-month" && e.date < thisMonthStart) return false;
+      if (dateRange === "last-month" && (e.date < lastMonthStart || e.date > lastMonthEnd)) return false;
+      if (dateRange === "this-qtr" && e.date < thisQtrStart) return false;
+      return true;
+    });
+    return [...list].sort((a, b) => {
+      if (sortBy === "date-asc") return a.date.localeCompare(b.date);
+      if (sortBy === "amount-desc") return b.amount - a.amount;
+      if (sortBy === "amount-asc") return a.amount - b.amount;
+      if (sortBy === "category") return a.category.localeCompare(b.category);
+      return b.date.localeCompare(a.date);
+    });
+  }, [expenses, catFilter, statusFilter, search, sortBy, dateRange, thisMonthStart, lastMonthStart, lastMonthEnd, thisQtrStart]);
+
+  const summary = useMemo(() => ({
+    approved: expenses.filter((e) => e.status === "approved").reduce((s, e) => s + e.amount, 0),
+    pending: expenses.filter((e) => e.status === "pending").reduce((s, e) => s + e.amount, 0),
+    rejected: expenses.filter((e) => e.status === "rejected").reduce((s, e) => s + e.amount, 0),
+    pendingCount: expenses.filter((e) => e.status === "pending").length,
+    approvedCount: expenses.filter((e) => e.status === "approved").length,
+    total: expenses.reduce((s, e) => s + e.amount, 0),
+  }), [expenses]);
+
+  const categoryBreakdown = useMemo(() => {
+    const map: Record<string, number> = {};
+    expenses.filter((e) => e.status === "approved").forEach((e) => { map[e.category] = (map[e.category] || 0) + e.amount; });
+    return Object.entries(map).sort(([, a], [, b]) => b - a);
+  }, [expenses]);
+
+  const maxCatAmount = categoryBreakdown[0]?.[1] ?? 1;
+
+  const exportCsv = () => {
+    const rows = [
+      ["ID", "Date", "Description", "Category", "Vendor", "Amount", "Status", "Receipt", "Notes"],
+      ...expenses.map((e) => [e.id, e.date, e.description, e.category, e.vendor, e.amount, e.status, e.receipt ?? "", e.notes ?? ""]),
+    ];
+    const blob = new Blob([rows.map((r) => r.join(",")).join("\n")], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "expenses.csv";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const statusCls = (s: string) =>
+    s === "approved" ? "bg-green-100 text-green-700" :
+    s === "pending" ? "bg-yellow-100 text-yellow-700" :
+    "bg-red-100 text-red-700";
+
+  const catColors = ["bg-blue-500", "bg-orange-500", "bg-purple-500", "bg-green-500", "bg-red-500", "bg-teal-500", "bg-pink-500", "bg-indigo-500", "bg-yellow-500"];
 
   return (
     <div className="max-w-6xl mx-auto">
+      {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
-        {[
-          { label: "Approved", value: formatCurrency(totalApproved), color: "text-green-700", bg: "bg-green-50 border-green-100" },
-          { label: "Pending Approval", value: formatCurrency(totalPending), color: "text-yellow-700", bg: "bg-yellow-50 border-yellow-100" },
-          { label: "Rejected", value: formatCurrency(totalRejected), color: "text-red-700", bg: "bg-red-50 border-red-100" },
-          { label: "Top Category", value: topCategory, color: "text-gray-700", bg: "bg-gray-50 border-gray-200" },
-        ].map((s) => (
-          <div key={s.label} className={`rounded-xl border p-3 ${s.bg}`}>
-            <p className="text-xs text-gray-500">{s.label}</p>
-            <p className={`text-xl font-bold mt-0.5 truncate ${s.color}`}>{s.value}</p>
-          </div>
-        ))}
+        <div className="rounded-xl border p-3 bg-green-50 border-green-100">
+          <p className="text-xs text-gray-500">Approved <span className="text-gray-400">({summary.approvedCount})</span></p>
+          <p className="text-xl font-bold mt-0.5 text-green-700">{formatCurrency(summary.approved)}</p>
+        </div>
+        <div className="rounded-xl border p-3 bg-yellow-50 border-yellow-100">
+          <p className="text-xs text-gray-500">Pending <span className="text-gray-400">({summary.pendingCount})</span></p>
+          <p className="text-xl font-bold mt-0.5 text-yellow-700">{formatCurrency(summary.pending)}</p>
+        </div>
+        <div className="rounded-xl border p-3 bg-red-50 border-red-100">
+          <p className="text-xs text-gray-500">Rejected</p>
+          <p className="text-xl font-bold mt-0.5 text-red-700">{formatCurrency(summary.rejected)}</p>
+        </div>
+        <div className="rounded-xl border p-3 bg-gray-50 border-gray-200">
+          <p className="text-xs text-gray-500">Total Submitted</p>
+          <p className="text-xl font-bold mt-0.5 text-gray-700">{formatCurrency(summary.total)}</p>
+        </div>
       </div>
 
+      {/* Pending alert */}
+      {summary.pendingCount > 0 && (
+        <div className="mb-4 flex items-center gap-2.5 bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-2.5">
+          <AlertCircle size={15} className="text-yellow-600 shrink-0" />
+          <p className="text-sm text-yellow-800 font-medium">
+            {summary.pendingCount} expense{summary.pendingCount > 1 ? "s" : ""} pending approval · {formatCurrency(summary.pending)}
+          </p>
+        </div>
+      )}
+
+      {/* Analytics */}
+      {showAnalytics && categoryBreakdown.length > 0 && (
+        <div className="bg-white rounded-xl border p-4 mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-semibold text-gray-700">Spending by Category (Approved)</p>
+            <button onClick={() => setShowAnalytics(false)} className="text-xs text-gray-400 hover:text-gray-600">Hide</button>
+          </div>
+          <div className="space-y-2">
+            {categoryBreakdown.map(([cat, amt], i) => (
+              <div key={cat} className="flex items-center gap-3">
+                <span className="text-xs text-gray-500 w-28 shrink-0 truncate">{cat}</span>
+                <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${catColors[i % catColors.length]}`}
+                    style={{ width: `${(amt / maxCatAmount) * 100}%` }}
+                  />
+                </div>
+                <span className="text-xs font-semibold text-gray-700 w-20 text-right shrink-0">{formatCurrency(amt)}</span>
+                <span className="text-xs text-gray-400 w-8 text-right shrink-0">{Math.round((amt / summary.approved) * 100)}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {!showAnalytics && (
+        <button onClick={() => setShowAnalytics(true)} className="mb-4 text-xs text-orange-600 hover:text-orange-700 flex items-center gap-1 font-medium">
+          <BarChart3 size={12} /> Show Category Breakdown
+        </button>
+      )}
+
+      {/* Toolbar */}
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
-        <div className="flex gap-1 flex-wrap">
-          {["all", "approved", "pending", "rejected"].map((s) => (
+        <div className="flex gap-1 flex-wrap items-center">
+          {(["all", "approved", "pending", "rejected"] as const).map((s) => (
             <button key={s} onClick={() => setStatusFilter(s)} className={`px-2.5 py-1.5 rounded-lg text-xs font-medium capitalize transition-colors ${statusFilter === s ? "bg-orange-100 text-orange-700" : "text-gray-500 hover:bg-gray-100"}`}>
               {s} <span className="text-gray-400">({expenses.filter((e) => s === "all" || e.status === s).length})</span>
             </button>
           ))}
         </div>
-        <div className="flex gap-2 ml-auto flex-wrap">
-          <select value={catFilter} onChange={(e) => setCatFilter(e.target.value)} className="px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-orange-400 outline-none">
+        <div className="flex gap-2 ml-auto flex-wrap items-center">
+          {/* Date Range */}
+          <select value={dateRange} onChange={(e) => setDateRange(e.target.value)} className="px-2.5 py-1.5 border rounded-lg text-xs focus:ring-2 focus:ring-orange-400 outline-none">
+            <option value="all">All Time</option>
+            <option value="this-month">This Month</option>
+            <option value="last-month">Last Month</option>
+            <option value="this-qtr">This Quarter</option>
+          </select>
+          {/* Category */}
+          <select value={catFilter} onChange={(e) => setCatFilter(e.target.value)} className="px-2.5 py-1.5 border rounded-lg text-xs focus:ring-2 focus:ring-orange-400 outline-none">
             {categories.map((c) => <option key={c} value={c}>{c === "all" ? "All Categories" : c}</option>)}
           </select>
+          {/* Sort */}
+          <select value={sortBy} onChange={(e) => setSortBy(e.target.value as typeof sortBy)} className="px-2.5 py-1.5 border rounded-lg text-xs focus:ring-2 focus:ring-orange-400 outline-none">
+            <option value="date-desc">Newest First</option>
+            <option value="date-asc">Oldest First</option>
+            <option value="amount-desc">Highest Amount</option>
+            <option value="amount-asc">Lowest Amount</option>
+            <option value="category">Category A–Z</option>
+          </select>
+          {/* Search */}
           <div className="relative">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
             <input type="text" placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8 pr-3 py-1.5 border rounded-lg text-sm w-36 focus:ring-2 focus:ring-orange-400 outline-none" />
           </div>
+          <button onClick={exportCsv} title="Export CSV" className="px-3 py-1.5 border rounded-lg text-xs text-gray-600 hover:bg-gray-50 flex items-center gap-1.5">
+            <Download size={13} /> Export
+          </button>
           <button onClick={onAddNew} className="px-3 py-1.5 bg-orange-600 text-white rounded-lg hover:bg-orange-700 flex items-center gap-1.5 text-sm whitespace-nowrap">
             <Plus size={15} /> Add Expense
           </button>
         </div>
       </div>
 
+      {/* Table */}
       <div className="bg-white rounded-xl border overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b">
             <tr>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Description</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Category</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Vendor</th>
-              <th className="text-center px-4 py-3 font-medium text-gray-600">Date</th>
-              <th className="text-right px-4 py-3 font-medium text-gray-600">Amount</th>
-              <th className="text-center px-4 py-3 font-medium text-gray-600">Status</th>
-              <th className="text-center px-4 py-3 font-medium text-gray-600">Actions</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs">Description</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs hidden md:table-cell">Category</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600 text-xs hidden lg:table-cell">Vendor</th>
+              <th className="text-center px-4 py-3 font-medium text-gray-600 text-xs hidden sm:table-cell">Date</th>
+              <th className="text-right px-4 py-3 font-medium text-gray-600 text-xs">Amount</th>
+              <th className="text-center px-4 py-3 font-medium text-gray-600 text-xs">Status</th>
+              <th className="text-center px-4 py-3 font-medium text-gray-600 text-xs">Actions</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={7} className="text-center py-10 text-gray-400">No expenses match your filter</td></tr>
+              <tr><td colSpan={7} className="text-center py-12 text-gray-400">No expenses match your filter</td></tr>
             )}
             {filtered.map((exp) => (
-              <tr key={exp.id} className="border-b hover:bg-gray-50">
-                <td className="px-4 py-3 font-medium">{exp.description}</td>
-                <td className="px-4 py-3 text-gray-500">{exp.category}</td>
-                <td className="px-4 py-3 text-gray-500">{exp.vendor}</td>
-                <td className="px-4 py-3 text-center text-xs text-gray-500">{exp.date}</td>
-                <td className="px-4 py-3 text-right font-medium text-red-600">-{formatCurrency(exp.amount)}</td>
+              <tr key={exp.id} className="border-b hover:bg-gray-50 transition-colors">
+                <td className="px-4 py-3">
+                  <p className="font-medium text-gray-800 text-sm">{exp.description}</p>
+                  <p className="text-xs text-gray-400">{exp.id}{exp.receipt ? ` · Ref: ${exp.receipt}` : ""}</p>
+                </td>
+                <td className="px-4 py-3 hidden md:table-cell">
+                  <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full">
+                    <Tag size={10} />{exp.category}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-sm text-gray-500 hidden lg:table-cell">{exp.vendor}</td>
+                <td className="px-4 py-3 text-center text-xs text-gray-500 hidden sm:table-cell">{exp.date}</td>
+                <td className="px-4 py-3 text-right font-semibold text-red-600">-{formatCurrency(exp.amount)}</td>
                 <td className="px-4 py-3 text-center">
-                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                    exp.status === "approved" ? "bg-green-100 text-green-700" :
-                    exp.status === "pending" ? "bg-yellow-100 text-yellow-700" :
-                    "bg-red-100 text-red-700"
-                  }`}>{exp.status}</span>
+                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${statusCls(exp.status)}`}>
+                    {exp.status}
+                  </span>
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex justify-center gap-1">
+                    <button onClick={() => onView(exp)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700" title="View Details"><Eye size={13} /></button>
                     {exp.status === "pending" && (
                       <>
-                        <button onClick={() => onApprove(exp.id)} className="p-1.5 rounded bg-green-50 text-green-600 hover:bg-green-100" title="Approve"><CheckCircle size={14} /></button>
-                        <button onClick={() => onReject(exp.id)} className="p-1.5 rounded bg-red-50 text-red-500 hover:bg-red-100" title="Reject"><XCircle size={14} /></button>
+                        <button onClick={() => onEdit(exp)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-blue-600" title="Edit"><Edit3 size={13} /></button>
+                        <button onClick={() => onApprove(exp.id)} className="p-1.5 rounded bg-green-50 text-green-600 hover:bg-green-100" title="Approve"><CheckCircle size={13} /></button>
+                        <button onClick={() => onReject(exp.id)} className="p-1.5 rounded bg-red-50 text-red-500 hover:bg-red-100" title="Reject"><XCircle size={13} /></button>
                       </>
                     )}
-                    {exp.status !== "pending" && (
-                      <button onClick={() => onDelete(exp.id)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-red-500" title="Delete"><Trash2 size={14} /></button>
+                    {exp.status === "rejected" && (
+                      <>
+                        <button onClick={() => onEdit(exp)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-blue-600" title="Edit & Resubmit"><Edit3 size={13} /></button>
+                        <button onClick={() => onResubmit(exp.id)} className="p-1.5 rounded bg-yellow-50 text-yellow-600 hover:bg-yellow-100" title="Resubmit"><RotateCcw size={13} /></button>
+                      </>
                     )}
+                    <button onClick={() => { if (confirm(`Delete "${exp.description}"? This cannot be undone.`)) onDelete(exp.id); }} className="p-1.5 rounded hover:bg-red-50 text-gray-300 hover:text-red-500" title="Delete"><Trash2 size={13} /></button>
                   </div>
                 </td>
               </tr>
@@ -926,8 +1090,10 @@ function ExpensesView({ expenses, onAddNew, onApprove, onReject, onDelete }: {
           {filtered.length > 0 && (
             <tfoot className="bg-gray-50 border-t">
               <tr>
-                <td colSpan={4} className="px-4 py-2.5 text-sm font-semibold text-gray-500 text-right">Total filtered:</td>
-                <td className="px-4 py-2.5 text-right font-bold text-red-600">-{formatCurrency(filtered.reduce((s, e) => s + e.amount, 0))}</td>
+                <td className="px-4 py-2.5 text-xs text-gray-400">{filtered.length} expense{filtered.length !== 1 ? "s" : ""}</td>
+                <td colSpan={3} className="hidden md:table-cell" />
+                <td colSpan={1} className="md:hidden" />
+                <td className="px-4 py-2.5 text-right font-bold text-red-600 text-sm">-{formatCurrency(filtered.reduce((s, e) => s + e.amount, 0))}</td>
                 <td colSpan={2} />
               </tr>
             </tfoot>
@@ -1622,63 +1788,200 @@ function RecordPaymentModal({ invoice, onClose, onRecord }: {
 }
 
 
-function AddExpenseModal({ onClose, onAdded }: { onClose: () => void; onAdded: (exp: Expense) => void }) {
-  const [form, setForm] = useState({ category: "Office Supplies", description: "", amount: "", vendor: "", date: new Date().toISOString().slice(0, 10) });
-  const categories = ["Office Supplies", "Software", "Travel", "Marketing", "Utilities", "Maintenance", "Other"];
+function ExpenseDetailModal({ expense: exp, onClose, onApprove, onReject, onEdit, onDelete, onResubmit }: {
+  expense: Expense;
+  onClose: () => void;
+  onApprove: () => void;
+  onReject: () => void;
+  onEdit: (exp: Expense) => void;
+  onDelete: (id: string) => void;
+  onResubmit: () => void;
+}) {
+  const statusBg =
+    exp.status === "approved" ? "bg-green-50 text-green-700 border-green-200" :
+    exp.status === "pending" ? "bg-yellow-50 text-yellow-700 border-yellow-200" :
+    "bg-red-50 text-red-700 border-red-200";
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between p-5 border-b">
+          <div>
+            <h3 className="text-lg font-bold text-gray-800">{exp.description}</h3>
+            <p className="text-sm text-gray-500 mt-0.5">{exp.id} · {exp.date}</p>
+          </div>
+          <div className="flex items-center gap-1">
+            {(exp.status === "pending" || exp.status === "rejected") && (
+              <button onClick={() => onEdit(exp)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500" title="Edit"><Edit3 size={15} /></button>
+            )}
+            <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 ml-1"><X size={18} /></button>
+          </div>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className={`flex items-center justify-center px-4 py-2.5 rounded-xl border font-semibold text-sm ${statusBg}`}>
+            {exp.status.toUpperCase()}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="bg-gray-50 rounded-xl p-3">
+              <p className="text-xs text-gray-400 mb-1">Category</p>
+              <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 bg-white border rounded-full text-gray-700"><Tag size={10} />{exp.category}</span>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-3">
+              <p className="text-xs text-gray-400 mb-1">Vendor</p>
+              <p className="font-semibold text-gray-800">{exp.vendor}</p>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-3">
+              <p className="text-xs text-gray-400 mb-1">Date</p>
+              <p className="font-semibold text-gray-800">{exp.date}</p>
+            </div>
+            <div className="bg-red-50 rounded-xl p-3">
+              <p className="text-xs text-gray-400 mb-1">Amount</p>
+              <p className="font-bold text-red-700 text-base">-{formatCurrency(exp.amount)}</p>
+            </div>
+          </div>
+
+          {exp.receipt && (
+            <div className="bg-gray-50 rounded-xl p-3">
+              <p className="text-xs text-gray-400 mb-1">Receipt / Reference</p>
+              <p className="text-sm font-medium text-gray-700 font-mono">{exp.receipt}</p>
+            </div>
+          )}
+
+          {exp.notes && (
+            <div className="bg-gray-50 rounded-xl p-3">
+              <p className="text-xs text-gray-400 mb-1">Notes</p>
+              <p className="text-sm text-gray-600">{exp.notes}</p>
+            </div>
+          )}
+
+          <div className="flex gap-2 flex-wrap pt-1 border-t">
+            {exp.status === "pending" && (
+              <>
+                <button onClick={onApprove} className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-semibold flex items-center justify-center gap-1.5 min-w-[100px]">
+                  <CheckCircle size={14} /> Approve
+                </button>
+                <button onClick={onReject} className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold flex items-center justify-center gap-1.5 min-w-[100px]">
+                  <XCircle size={14} /> Reject
+                </button>
+              </>
+            )}
+            {exp.status === "rejected" && (
+              <button onClick={onResubmit} className="flex-1 py-2.5 bg-yellow-500 hover:bg-yellow-600 text-white rounded-xl text-sm font-semibold flex items-center justify-center gap-1.5">
+                <RotateCcw size={14} /> Resubmit
+              </button>
+            )}
+            <button onClick={() => { if (confirm(`Delete "${exp.description}"? This cannot be undone.`)) { onDelete(exp.id); } }} className="flex-1 py-2.5 border border-red-200 text-red-600 hover:bg-red-50 rounded-xl text-sm font-medium flex items-center justify-center gap-1.5">
+              <Trash2 size={14} /> Delete
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ExpenseFormModal({ expense, onClose, onSave }: {
+  expense: Expense | null;
+  onClose: () => void;
+  onSave: (exp: Expense) => void;
+}) {
+  const CATEGORIES = ["Office Supplies", "Software", "Travel", "Marketing", "Utilities", "Maintenance", "Salaries", "Rent", "Other"];
+  const today = new Date().toISOString().slice(0, 10);
+  const [form, setForm] = useState({
+    category: expense?.category ?? "Office Supplies",
+    description: expense?.description ?? "",
+    amount: expense?.amount.toString() ?? "",
+    vendor: expense?.vendor ?? "",
+    date: expense?.date ?? today,
+    receipt: expense?.receipt ?? "",
+    notes: expense?.notes ?? "",
+  });
+  const sf = <K extends keyof typeof form>(k: K, v: typeof form[K]) => setForm((p) => ({ ...p, [k]: v }));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onAdded({
-      id: `EXP-${String(Date.now()).slice(-5)}`,
+    const id = expense?.id ?? `EXP-${String(expenseNextNum++).padStart(3, "0")}`;
+    onSave({
+      id,
       category: form.category,
       description: form.description,
       amount: parseFloat(form.amount),
       date: form.date,
       vendor: form.vendor,
-      status: "pending",
+      status: expense?.status === "rejected" ? "pending" : (expense?.status ?? "pending"),
+      notes: form.notes || undefined,
+      receipt: form.receipt || undefined,
     });
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 max-w-md w-full space-y-4">
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 max-w-md w-full max-h-[92vh] overflow-y-auto shadow-2xl space-y-4" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
-          <h3 className="text-lg font-bold">Add Expense</h3>
-          <button type="button" onClick={onClose} className="p-1 rounded hover:bg-gray-100"><X size={20} /></button>
+          <h3 className="text-lg font-bold">{expense ? "Edit Expense" : "Add Expense"}</h3>
+          <button type="button" onClick={onClose} className="p-1.5 rounded hover:bg-gray-100"><X size={20} /></button>
         </div>
+
         <div>
-          <label className="text-xs font-medium text-gray-600">Category</label>
-          <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-orange-400 outline-none">
-            {categories.map((c) => <option key={c}>{c}</option>)}
+          <label className="text-xs font-medium text-gray-600 block mb-1">Category *</label>
+          <select value={form.category} onChange={(e) => sf("category", e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-orange-400 outline-none">
+            {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
           </select>
         </div>
-        {[
-          { key: "description", label: "Description", type: "text", placeholder: "What was purchased?" },
-          { key: "amount", label: "Amount ($)", type: "number", placeholder: "0.00" },
-          { key: "vendor", label: "Vendor", type: "text", placeholder: "Vendor or supplier name" },
-          { key: "date", label: "Date", type: "date", placeholder: "" },
-        ].map((f) => (
-          <div key={f.key}>
-            <label className="text-xs font-medium text-gray-600">{f.label} *</label>
-            <input
-              required type={f.type} placeholder={f.placeholder}
-              step={f.type === "number" ? "0.01" : undefined}
-              min={f.type === "number" ? "0.01" : undefined}
-              value={form[f.key as keyof typeof form]}
-              onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
-              className="w-full mt-1 px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-orange-400 outline-none"
-            />
+
+        <div>
+          <label className="text-xs font-medium text-gray-600 block mb-1">Description *</label>
+          <input required value={form.description} onChange={(e) => sf("description", e.target.value)} placeholder="What was purchased?" className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-orange-400 outline-none" />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-gray-600 block mb-1">Amount ($) *</label>
+            <input required type="number" step="0.01" min="0.01" value={form.amount} onChange={(e) => sf("amount", e.target.value)} placeholder="0.00" className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-orange-400 outline-none" />
           </div>
-        ))}
-        <p className="text-xs text-gray-400">Expense will be submitted for approval.</p>
-        <button type="submit" className="w-full py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-medium text-sm">
-          Submit Expense
-        </button>
+          <div>
+            <label className="text-xs font-medium text-gray-600 block mb-1">Date *</label>
+            <input required type="date" value={form.date} max={today} onChange={(e) => sf("date", e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-orange-400 outline-none" />
+          </div>
+        </div>
+
+        <div>
+          <label className="text-xs font-medium text-gray-600 block mb-1">Vendor / Supplier *</label>
+          <input required value={form.vendor} onChange={(e) => sf("vendor", e.target.value)} placeholder="Vendor or supplier name" className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-orange-400 outline-none" />
+        </div>
+
+        <div>
+          <label className="text-xs font-medium text-gray-600 block mb-1">Receipt / Reference # (optional)</label>
+          <input value={form.receipt} onChange={(e) => sf("receipt", e.target.value)} placeholder="e.g. REC-20001 or INV#1234" className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-orange-400 outline-none" />
+        </div>
+
+        <div>
+          <label className="text-xs font-medium text-gray-600 block mb-1">Notes (optional)</label>
+          <textarea rows={2} value={form.notes} onChange={(e) => sf("notes", e.target.value)} placeholder="Additional details, purpose, project code, etc." className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-orange-400 outline-none resize-none" />
+        </div>
+
+        {expense?.status === "rejected" && (
+          <p className="text-xs text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2">
+            Saving changes will resubmit this expense for approval.
+          </p>
+        )}
+        {!expense && (
+          <p className="text-xs text-gray-400">Expense will be submitted for manager approval.</p>
+        )}
+
+        <div className="flex gap-3">
+          <button type="button" onClick={onClose} className="flex-1 py-2.5 border rounded-xl text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
+          <button type="submit" className="flex-1 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-medium text-sm">
+            {expense ? (expense.status === "rejected" ? "Save & Resubmit" : "Save Changes") : "Submit Expense"}
+          </button>
+        </div>
       </form>
     </div>
   );
 }
+
 
 function AddAccountModal({ onClose, onAdded, existing }: { onClose: () => void; onAdded: (a: Account) => void; existing: Account[] }) {
   const [form, setForm] = useState({ code: "", name: "", type: "Asset" as Account["type"], balance: "" });
