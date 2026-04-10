@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { connectDB } from "@/lib/mongodb";
+import { Product } from "@/models/Product";
 
 export async function GET() {
   try {
-    const products = await prisma.product.findMany({
-      where: { isActive: true },
-      orderBy: { name: "asc" },
-    });
-    return NextResponse.json(products);
+    await connectDB();
+    const products = await Product.find({ isActive: true }).sort({ name: 1 });
+    return NextResponse.json(products.map((p) => p.toJSON()));
   } catch {
     return NextResponse.json([]);
   }
@@ -15,21 +14,21 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    await connectDB();
     const body = await request.json();
-    const product = await prisma.product.create({
-      data: {
-        name: body.name,
-        sku: body.sku,
-        price: body.price,
-        quantity: body.quantity || 0,
-        category: body.category || null,
-        description: body.description || null,
-        cost: body.cost || 0,
-        taxRate: body.taxRate || 0,
-      },
+    const product = await Product.create({
+      name:        body.name,
+      sku:         body.sku,
+      price:       body.price,
+      quantity:    body.quantity    ?? 0,
+      category:    body.category    ?? null,
+      description: body.description ?? null,
+      cost:        body.cost        ?? 0,
+      taxRate:     body.taxRate     ?? 0,
     });
-    return NextResponse.json(product, { status: 201 });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json(product.toJSON(), { status: 201 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 }

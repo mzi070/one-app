@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { connectDB } from "@/lib/mongodb";
+import { Employee } from "@/models/Employee";
 import { generateEmployeeId } from "@/lib/utils";
 
 export async function GET() {
   try {
-    const employees = await prisma.employee.findMany({
-      include: { department: true },
-      orderBy: { firstName: "asc" },
-    });
-    return NextResponse.json(employees);
+    await connectDB();
+    const employees = await Employee.find().sort({ firstName: 1 });
+    return NextResponse.json(employees.map((e) => e.toJSON()));
   } catch {
     return NextResponse.json([]);
   }
@@ -16,32 +15,21 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    await connectDB();
     const body = await request.json();
-
-    // Find or create department
-    let department = await prisma.department.findUnique({
-      where: { name: body.department },
+    const employee = await Employee.create({
+      employeeId: generateEmployeeId(),
+      firstName:  body.firstName,
+      lastName:   body.lastName,
+      email:      body.email,
+      phone:      body.phone      || null,
+      position:   body.position,
+      department: body.department || null,
+      salary:     body.salary     || 0,
     });
-    if (!department) {
-      department = await prisma.department.create({
-        data: { name: body.department },
-      });
-    }
-
-    const employee = await prisma.employee.create({
-      data: {
-        employeeId: generateEmployeeId(),
-        firstName: body.firstName,
-        lastName: body.lastName,
-        email: body.email,
-        phone: body.phone || null,
-        position: body.position,
-        departmentId: department.id,
-        salary: body.salary || 0,
-      },
-    });
-    return NextResponse.json(employee, { status: 201 });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json(employee.toJSON(), { status: 201 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 }

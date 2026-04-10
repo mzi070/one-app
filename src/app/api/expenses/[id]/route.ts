@@ -1,33 +1,39 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { connectDB } from "@/lib/mongodb";
+import { Expense } from "@/models/Expense";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    await connectDB();
     const { id } = await params;
     const body = await request.json();
-    const expense = await prisma.expense.update({
-      where: { id },
-      data: {
-        category: body.category,
+    const expense = await Expense.findByIdAndUpdate(
+      id,
+      {
+        category:    body.category,
         description: body.description,
-        amount: body.amount !== undefined ? body.amount : undefined,
-        date: body.date ? new Date(body.date) : undefined,
+        ...(body.amount !== undefined && { amount: body.amount }),
+        ...(body.date   !== undefined && { date:   new Date(body.date) }),
         vendor: body.vendor ?? null,
         status: body.status,
       },
-    });
-    return NextResponse.json(expense);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+      { new: true }
+    );
+    if (!expense) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json(expense.toJSON());
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    await connectDB();
     const { id } = await params;
-    await prisma.expense.delete({ where: { id } });
+    await Expense.findByIdAndDelete(id);
     return NextResponse.json({ ok: true });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
-  }
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 400 });
 }

@@ -1,19 +1,2 @@
-import { createClient } from "@libsql/client";
-import { PrismaClient } from "@/generated/prisma/client";
-import { PrismaLibSql } from "@prisma/adapter-libsql";
-
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
-};
-
-function createPrismaClient() {
-  const url = process.env.DATABASE_URL || "file:./prisma/dev.db";
-  const authToken = process.env.DATABASE_AUTH_TOKEN;
-  const libsql = createClient({ url, authToken });
-  const adapter = new PrismaLibSql(libsql);
-  return new PrismaClient({ adapter });
-}
-
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
-
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+// This file is kept as a placeholder. The app now uses MongoDB via Mongoose.
+// See src/lib/mongodb.ts
