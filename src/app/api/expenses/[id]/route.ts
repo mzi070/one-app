@@ -36,4 +36,5 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 400 });
+  }
 }
