@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { usePOSStore, usePOSSalesStore, usePOSCustomerStore, type SaleRecord, type POSCustomer, notify } from "@/store";
+import { usePOSStore, usePOSSalesStore, usePOSCustomerStore, useSettingsStore, type SaleRecord, type POSCustomer, notify } from "@/store";
 import {
   Search,
   Plus,
@@ -70,6 +70,7 @@ export default function POSModule() {
     addToCart,
     removeFromCart,
     updateQuantity,
+    updateDiscount,
     clearCart,
     setSearchQuery,
     setSelectedCategory,
@@ -79,10 +80,14 @@ export default function POSModule() {
   } = usePOSStore();
 
   const { recordSale } = usePOSSalesStore();
-  const { customers, recordPurchase } = usePOSCustomerStore();
+  const { customers, addCustomer, recordPurchase } = usePOSCustomerStore();
+  const taxRate = useSettingsStore((s) => s.taxRate);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [showCustomerPicker, setShowCustomerPicker] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
+  const [cashTendered, setCashTendered] = useState<string>("");
+  const [pendingTxnId, setPendingTxnId] = useState<string>("");
+  const [showNewCustomerModal, setShowNewCustomerModal] = useState(false);
 
   const selectedCustomer = customers.find((c) => c.id === selectedCustomerId) ?? null;
 
@@ -111,15 +116,17 @@ export default function POSModule() {
   const handleCheckout = async () => {
     if (cart.length === 0) return;
     const subtotal = getSubtotal();
-    const tax = subtotal * 0.05;
-    const total = getTotal() + tax;
+    const discountedTotal = getTotal();
+    const tax = discountedTotal * (taxRate / 100);
+    const total = discountedTotal + tax;
     const itemCount = cart.reduce((s, i) => s + i.quantity, 0);
 
     const now = new Date().toISOString();
+    const txnId = pendingTxnId || `TXN-${Date.now()}`;
 
     // Record sale in local history
     recordSale({
-      id: `TXN-${Date.now()}`,
+      id: txnId,
       timestamp: now,
       items: cart.map((c) => ({ name: c.name, productId: c.productId, quantity: c.quantity, price: c.price })),
       subtotal,
@@ -145,6 +152,24 @@ export default function POSModule() {
     } catch {
       // Continue with local checkout
     }
+
+    // Deduct stock for each sold item
+    for (const item of cart) {
+      const product = products.find((p) => p.id === item.productId);
+      if (product) {
+        const newQty = Math.max(0, product.quantity - item.quantity);
+        try {
+          await fetch(`/api/products/${item.productId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ quantity: newQty }),
+          });
+        } catch {
+          // Continue anyway
+        }
+      }
+    }
+    loadProducts();
     setCheckoutDone(true);
     notify({
       title: "Sale Completed",
@@ -176,10 +201,12 @@ export default function POSModule() {
       setSelectedCustomerId(null);
       setCheckoutDone(false);
       setShowCheckout(false);
+      setCashTendered("");
+      setPendingTxnId("");
     }, 2000);
   };
 
-  const taxAmount = getSubtotal() * 0.05;
+  const taxAmount = getTotal() * (taxRate / 100);
 
   if (view === "products") return <ProductsManager products={products} onBack={() => setView("sale")} onRefresh={loadProducts} />;
   if (view === "customers") return <CustomersView onBack={() => setView("sale")} onSelectForSale={(id) => { setSelectedCustomerId(id); setView("sale"); }} />;
@@ -233,23 +260,42 @@ export default function POSModule() {
         {/* Product Grid */}
         <div className="flex-1 overflow-y-auto p-3">
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2">
-            {filteredProducts.map((product) => (
-              <button
-                key={product.id}
-                onClick={() => addToCart({ productId: product.id, name: product.name, price: product.price })}
-                className="bg-white rounded-xl border border-gray-200 p-3 text-left hover:border-green-400 hover:shadow-md transition-all group"
-              >
-                <div className="w-full h-16 bg-gray-100 rounded-lg mb-2 flex items-center justify-center group-hover:bg-green-50 transition-colors">
-                  <ShoppingBag size={24} className="text-gray-300 group-hover:text-green-400" />
-                </div>
-                <p className="text-sm font-medium text-gray-800 truncate">{product.name}</p>
-                <p className="text-xs text-gray-400">{product.sku}</p>
-                <div className="flex items-center justify-between mt-1">
-                  <span className="text-sm font-bold text-green-600">{formatCurrency(product.price)}</span>
-                  <span className="text-xs text-gray-400">Qty: {product.quantity}</span>
-                </div>
-              </button>
-            ))}
+            {filteredProducts.map((product) => {
+              const isOOS = product.quantity === 0;
+              const isLow = product.quantity > 0 && product.quantity <= 10;
+              return (
+                <button
+                  key={product.id}
+                  onClick={() => !isOOS && addToCart({ productId: product.id, name: product.name, price: product.price })}
+                  disabled={isOOS}
+                  className={cn(
+                    "bg-white rounded-xl border p-3 text-left transition-all group relative",
+                    isOOS ? "border-gray-100 opacity-60 cursor-not-allowed" : "border-gray-200 hover:border-green-400 hover:shadow-md"
+                  )}
+                >
+                  <div className="w-full h-16 bg-gray-100 rounded-lg mb-2 flex items-center justify-center transition-colors relative overflow-hidden">
+                    {isOOS ? (
+                      <div className="absolute inset-0 bg-red-50 flex items-center justify-center">
+                        <span className="text-[10px] font-bold text-red-500 uppercase tracking-wide">Out of Stock</span>
+                      </div>
+                    ) : (
+                      <ShoppingBag size={24} className="text-gray-300 group-hover:text-green-400 transition-colors" />
+                    )}
+                  </div>
+                  <p className="text-sm font-medium text-gray-800 truncate">{product.name}</p>
+                  <p className="text-xs text-gray-400 truncate">{product.sku}</p>
+                  <div className="flex items-center justify-between mt-1.5">
+                    <span className="text-sm font-bold text-green-600">{formatCurrency(product.price)}</span>
+                    <span className={cn(
+                      "text-xs font-medium px-1.5 py-0.5 rounded-full",
+                      isOOS ? "bg-red-100 text-red-600" : isLow ? "bg-orange-100 text-orange-600" : "bg-gray-100 text-gray-500"
+                    )}>
+                      {product.quantity}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
           </div>
           {filteredProducts.length === 0 && (
             <div className="text-center py-12 text-gray-400">
@@ -337,6 +383,14 @@ export default function POSModule() {
                       <p className="text-xs text-gray-400 text-center py-4">No customers found</p>
                     )}
                   </div>
+                  <div className="border-t p-2">
+                    <button
+                      onClick={() => { setShowCustomerPicker(false); setShowNewCustomerModal(true); }}
+                      className="w-full flex items-center gap-1.5 px-3 py-1.5 text-xs text-green-600 hover:bg-green-50 rounded-lg transition-colors font-medium"
+                    >
+                      <UserPlus size={13} /> New Customer
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -353,32 +407,60 @@ export default function POSModule() {
             </div>
           ) : (
             cart.map((item) => (
-              <div key={item.id} className="bg-gray-50 rounded-lg p-2.5 flex items-center gap-2">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-800 truncate">{item.name}</p>
-                  <p className="text-xs text-gray-500">{formatCurrency(item.price)} each</p>
-                </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => updateQuantity(item.id, Math.max(1, item.quantity - 1))}
-                    className="w-6 h-6 rounded bg-gray-200 hover:bg-gray-300 flex items-center justify-center"
-                  >
-                    <Minus size={12} />
+              <div key={item.id} className="bg-gray-50 rounded-lg p-2.5 space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">{item.name}</p>
+                    <p className="text-xs text-gray-500">{formatCurrency(item.price)} each</p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => updateQuantity(item.id, Math.max(1, item.quantity - 1))}
+                      className="w-6 h-6 rounded bg-gray-200 hover:bg-gray-300 flex items-center justify-center"
+                    >
+                      <Minus size={12} />
+                    </button>
+                    <input
+                      type="number"
+                      min={1}
+                      value={item.quantity}
+                      onChange={(e) => updateQuantity(item.id, Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-8 text-center text-sm font-medium bg-transparent border-0 outline-none"
+                    />
+                    <button
+                      onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                      className="w-6 h-6 rounded bg-gray-200 hover:bg-gray-300 flex items-center justify-center"
+                    >
+                      <Plus size={12} />
+                    </button>
+                  </div>
+                  <span className="text-sm font-semibold text-gray-800 w-16 text-right">
+                    {formatCurrency((item.price - item.discount) * item.quantity)}
+                  </span>
+                  <button onClick={() => removeFromCart(item.id)} className="text-red-400 hover:text-red-600">
+                    <Trash2 size={14} />
                   </button>
-                  <span className="w-8 text-center text-sm font-medium">{item.quantity}</span>
-                  <button
-                    onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                    className="w-6 h-6 rounded bg-gray-200 hover:bg-gray-300 flex items-center justify-center"
-                  >
-                    <Plus size={12} />
-                  </button>
                 </div>
-                <span className="text-sm font-semibold text-gray-800 w-16 text-right">
-                  {formatCurrency(item.price * item.quantity)}
-                </span>
-                <button onClick={() => removeFromCart(item.id)} className="text-red-400 hover:text-red-600">
-                  <Trash2 size={14} />
-                </button>
+                <div className="flex items-center gap-1.5 pl-0.5">
+                  <Tag size={10} className="text-gray-300 shrink-0" />
+                  <span className="text-xs text-gray-400">Disc:</span>
+                  <div className="relative flex items-center">
+                    <span className="absolute left-1.5 text-xs text-gray-400">$</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={item.price}
+                      step={0.01}
+                      value={item.discount || ""}
+                      placeholder="0"
+                      onChange={(e) => updateDiscount(item.id, Math.min(item.price, Math.max(0, parseFloat(e.target.value) || 0)))}
+                      className="w-16 pl-4 pr-1 py-0.5 text-xs border border-gray-200 rounded outline-none focus:ring-1 focus:ring-green-400 bg-white"
+                    />
+                  </div>
+                  {item.discount > 0 && (
+                    <span className="text-xs text-green-600 font-medium">−{formatCurrency(item.discount * item.quantity)}</span>
+                  )}
+                </div>
               </div>
             ))
           )}
@@ -391,8 +473,14 @@ export default function POSModule() {
               <span>Subtotal</span>
               <span>{formatCurrency(getSubtotal())}</span>
             </div>
+            {getSubtotal() !== getTotal() && (
+              <div className="flex justify-between text-sm text-green-600">
+                <span>Discount</span>
+                <span>−{formatCurrency(getSubtotal() - getTotal())}</span>
+              </div>
+            )}
             <div className="flex justify-between text-sm text-gray-600">
-              <span>Tax (5%)</span>
+              <span>Tax ({taxRate}%)</span>
               <span>{formatCurrency(taxAmount)}</span>
             </div>
             <div className="flex justify-between text-lg font-bold text-gray-900 border-t pt-2">
@@ -411,7 +499,7 @@ export default function POSModule() {
                 return (
                   <button
                     key={pm.id}
-                    onClick={() => setPaymentMethod(pm.id)}
+                    onClick={() => { setPaymentMethod(pm.id); setCashTendered(""); }}
                     className={`flex-1 flex flex-col items-center gap-1 py-2 rounded-lg border text-xs transition-colors ${
                       paymentMethod === pm.id
                         ? "border-green-500 bg-green-50 text-green-700"
@@ -425,9 +513,41 @@ export default function POSModule() {
               })}
             </div>
 
+            {/* Cash change calculator */}
+            {paymentMethod === "cash" && (
+              <div className="bg-green-50 border border-green-100 rounded-lg p-2.5 space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Banknote size={13} className="text-green-600" />
+                  <span className="text-xs font-semibold text-green-800">Cash Tendered</span>
+                </div>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={cashTendered}
+                  onChange={(e) => setCashTendered(e.target.value)}
+                  placeholder={`${(getTotal() + taxAmount).toFixed(2)}`}
+                  className="w-full px-2.5 py-1.5 border border-green-200 rounded-lg text-sm font-medium text-gray-800 outline-none focus:ring-2 focus:ring-green-400 bg-white"
+                />
+                {cashTendered !== "" && !isNaN(parseFloat(cashTendered)) && (
+                  parseFloat(cashTendered) >= getTotal() + taxAmount ? (
+                    <div className="flex justify-between text-sm font-bold text-green-700">
+                      <span>Change Due</span>
+                      <span>{formatCurrency(parseFloat(cashTendered) - (getTotal() + taxAmount))}</span>
+                    </div>
+                  ) : (
+                    <p className="text-xs font-medium text-red-600">
+                      Need {formatCurrency((getTotal() + taxAmount) - parseFloat(cashTendered))} more
+                    </p>
+                  )
+                )}
+              </div>
+            )}
+
             <button
-              onClick={() => setShowCheckout(true)}
-              className="w-full py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
+              onClick={() => { setPendingTxnId(`TXN-${Date.now()}`); setShowCheckout(true); }}
+              disabled={paymentMethod === "cash" && cashTendered !== "" && parseFloat(cashTendered) < getTotal() + taxAmount}
+              className="w-full py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
             >
               <Receipt size={18} />
               Charge {formatCurrency(getTotal() + taxAmount)}
@@ -439,55 +559,99 @@ export default function POSModule() {
       {/* Checkout Modal */}
       {showCheckout && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => !checkoutDone && setShowCheckout(false)}>
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
             {checkoutDone ? (
-              <div className="text-center py-6">
-                <CheckCircle size={64} className="mx-auto text-green-500 mb-4" />
+              <div className="text-center py-10 px-6">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle size={36} className="text-green-500" />
+                </div>
                 <h3 className="text-xl font-bold text-gray-900">Payment Successful!</h3>
-                <p className="text-gray-500 mt-2">Transaction completed</p>
+                <p className="text-gray-500 mt-1 text-sm">Transaction {pendingTxnId} completed</p>
+                {paymentMethod === "cash" && cashTendered && parseFloat(cashTendered) >= getTotal() + taxAmount && (
+                  <div className="mt-4 bg-green-50 rounded-xl px-4 py-3 inline-flex items-center gap-2">
+                    <Banknote size={16} className="text-green-600" />
+                    <span className="text-green-800 text-sm font-semibold">
+                      Change: {formatCurrency(parseFloat(cashTendered) - (getTotal() + taxAmount))}
+                    </span>
+                  </div>
+                )}
               </div>
             ) : (
               <>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-bold">Confirm Payment</h3>
-                  <button onClick={() => setShowCheckout(false)} className="p-1 rounded hover:bg-gray-100">
-                    <X size={20} />
-                  </button>
-                </div>
-                <div className="space-y-2 mb-4">
-                  {cart.map((item) => (
-                    <div key={item.id} className="flex justify-between text-sm">
-                      <span>{item.name} x{item.quantity}</span>
-                      <span>{formatCurrency(item.price * item.quantity)}</span>
+                {/* Receipt header */}
+                <div className="bg-gray-900 text-white px-5 py-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-bold text-base">Order Summary</h3>
+                      <p className="text-gray-400 text-xs mt-0.5 font-mono">{pendingTxnId}</p>
                     </div>
-                  ))}
-                </div>
-                <div className="border-t pt-3 space-y-1">
-                  <div className="flex justify-between text-sm">
-                    <span>Subtotal</span><span>{formatCurrency(getSubtotal())}</span>
+                    <button onClick={() => setShowCheckout(false)} className="p-1 rounded hover:bg-white/10 transition-colors">
+                      <X size={18} />
+                    </button>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span>Tax</span><span>{formatCurrency(taxAmount)}</span>
-                  </div>
-                  <div className="flex justify-between text-lg font-bold">
-                    <span>Total</span><span>{formatCurrency(getTotal() + taxAmount)}</span>
-                  </div>
-                </div>
-                <div className="mt-3 space-y-1 text-sm text-gray-500">
-                  <div>Payment: <span className="capitalize font-medium text-gray-700">{paymentMethod}</span></div>
                   {selectedCustomer && (
-                    <div className="flex items-center gap-1.5">
-                      <UserCheck size={14} className="text-green-600" />
-                      <span className="font-medium text-gray-700">{selectedCustomer.name}</span>
+                    <div className="flex items-center gap-1.5 mt-2 text-green-300 text-xs">
+                      <UserCheck size={13} />
+                      <span>{selectedCustomer.name}</span>
                     </div>
                   )}
                 </div>
-                <button
-                  onClick={handleCheckout}
-                  className="w-full mt-4 py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg"
-                >
-                  Complete Sale
-                </button>
+
+                {/* Items */}
+                <div className="px-5 py-3 max-h-48 overflow-y-auto border-b border-gray-100">
+                  {cart.map((item) => (
+                    <div key={item.id} className="flex justify-between items-center py-1.5 text-sm">
+                      <div className="min-w-0 flex-1">
+                        <span className="text-gray-800 font-medium truncate block">{item.name}</span>
+                        <span className="text-gray-400 text-xs">
+                          {formatCurrency(item.price)} × {item.quantity}
+                          {item.discount > 0 && ` − ${formatCurrency(item.discount)}/ea`}
+                        </span>
+                      </div>
+                      <span className="font-semibold text-gray-900 ml-3 shrink-0">
+                        {formatCurrency((item.price - item.discount) * item.quantity)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Totals */}
+                <div className="px-5 py-3 space-y-1.5 border-b border-gray-100 bg-gray-50">
+                  <div className="flex justify-between text-sm text-gray-600">
+                    <span>Subtotal</span><span>{formatCurrency(getSubtotal())}</span>
+                  </div>
+                  {getSubtotal() !== getTotal() && (
+                    <div className="flex justify-between text-sm text-green-600">
+                      <span>Discount</span><span>−{formatCurrency(getSubtotal() - getTotal())}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-sm text-gray-600">
+                    <span>Tax ({taxRate}%)</span><span>{formatCurrency(taxAmount)}</span>
+                  </div>
+                  <div className="flex justify-between text-base font-bold text-gray-900 pt-1 border-t border-gray-200">
+                    <span>Total</span><span>{formatCurrency(getTotal() + taxAmount)}</span>
+                  </div>
+                </div>
+
+                {/* Payment info */}
+                <div className="px-5 py-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-gray-500">Payment Method</span>
+                    <span className="capitalize font-semibold text-gray-800 text-sm">{paymentMethod}</span>
+                  </div>
+                  {paymentMethod === "cash" && cashTendered && (
+                    <div className="bg-green-50 rounded-lg px-3 py-2 flex justify-between text-sm font-bold text-green-700 mb-2">
+                      <span>Change Due</span>
+                      <span>{formatCurrency(Math.max(0, parseFloat(cashTendered) - (getTotal() + taxAmount)))}</span>
+                    </div>
+                  )}
+                  <button
+                    onClick={handleCheckout}
+                    className="w-full py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl text-base transition-colors"
+                  >
+                    Complete Sale — {formatCurrency(getTotal() + taxAmount)}
+                  </button>
+                </div>
               </>
             )}
           </div>
@@ -496,6 +660,19 @@ export default function POSModule() {
 
       {/* Add Product Modal */}
       {showAddProduct && <AddProductModal onClose={() => setShowAddProduct(false)} onAdded={loadProducts} />}
+
+      {/* New Customer from Sale View */}
+      {showNewCustomerModal && (
+        <CustomerModal
+          customer={null}
+          onClose={() => setShowNewCustomerModal(false)}
+          onSave={(data) => {
+            const newCustomer = addCustomer(data);
+            setSelectedCustomerId(newCustomer.id);
+            setShowNewCustomerModal(false);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -1748,66 +1925,6 @@ function CustomersView({ onBack, onSelectForSale }: { onBack: () => void; onSele
   );
 }
 
-// ─── Demo sales data (30 days) ────────────────────────────────────────────────
-function generateDemoSales(): SaleRecord[] {
-  const products = [
-    { id: "demo-1", name: "Wireless Mouse", price: 29.99 },
-    { id: "demo-2", name: "USB-C Cable", price: 12.99 },
-    { id: "demo-3", name: "Notebook A5", price: 4.99 },
-    { id: "demo-4", name: "Coffee Beans 500g", price: 18.50 },
-    { id: "demo-5", name: "Green Tea Pack", price: 8.99 },
-    { id: "demo-6", name: "Organic Milk 1L", price: 5.49 },
-    { id: "demo-7", name: "Whole Wheat Bread", price: 3.99 },
-    { id: "demo-8", name: "Bluetooth Speaker", price: 49.99 },
-    { id: "demo-9", name: "Cotton T-Shirt", price: 19.99 },
-    { id: "demo-10", name: "Desk Lamp LED", price: 34.99 },
-    { id: "demo-11", name: "Hand Sanitizer", price: 6.99 },
-    { id: "demo-12", name: "Energy Drink 250ml", price: 2.99 },
-  ];
-  const methods = ["cash", "card", "mobile"] as const;
-  const sales: SaleRecord[] = [];
-  const now = new Date();
-  let counter = 800;
-
-  for (let day = 29; day >= 0; day--) {
-    const base = new Date(now);
-    base.setDate(base.getDate() - day);
-    const seed = day * 7 + 3;
-    const count = 6 + (seed % 9);
-
-    for (let i = 0; i < count; i++) {
-      const h = 8 + ((seed * (i + 1) * 3) % 12);
-      const m = (seed * i * 7) % 60;
-      const d = new Date(base);
-      d.setHours(h, m, 0, 0);
-
-      const numItems = 1 + ((seed + i) % 3);
-      const items: SaleRecord["items"] = [];
-      let subtotal = 0;
-      for (let j = 0; j < numItems; j++) {
-        const p = products[(seed * (i + 1) + j * 5) % products.length];
-        const qty = 1 + (j % 3);
-        items.push({ name: p.name, productId: p.id, quantity: qty, price: p.price });
-        subtotal += p.price * qty;
-      }
-      const tax = subtotal * 0.05;
-      sales.push({
-        id: `TXN-${String(++counter).padStart(4, "0")}`,
-        timestamp: d.toISOString(),
-        items,
-        subtotal,
-        tax,
-        total: subtotal + tax,
-        paymentMethod: methods[(seed + i * 3) % 3],
-        itemCount: items.reduce((s, x) => s + x.quantity, 0),
-      });
-    }
-  }
-  return sales;
-}
-
-const DEMO_SALES = generateDemoSales();
-
 type ReportPeriod = "today" | "week" | "month";
 
 function SalesReports({ onBack }: { onBack: () => void }) {
@@ -1816,15 +1933,7 @@ function SalesReports({ onBack }: { onBack: () => void }) {
   const [search, setSearch] = useState("");
   const [methodFilter, setMethodFilter] = useState("all");
 
-  // Merge demo + real sales (real ones first), deduplicate by id
-  const allSales = useMemo<SaleRecord[]>(() => {
-    const seen = new Set<string>();
-    return [...salesHistory, ...DEMO_SALES].filter((s) => {
-      if (seen.has(s.id)) return false;
-      seen.add(s.id);
-      return true;
-    });
-  }, [salesHistory]);
+  const allSales = useMemo<SaleRecord[]>(() => salesHistory, [salesHistory]);
 
   // Filter by period
   const periodSales = useMemo(() => {
