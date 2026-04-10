@@ -32,6 +32,10 @@ import {
   RotateCcw,
   Tag,
   Filter,
+  ArrowUpDown,
+  BookOpen,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 
@@ -70,6 +74,8 @@ interface Account {
   name: string;
   type: "Asset" | "Liability" | "Equity" | "Revenue" | "Expense";
   balance: number;
+  description?: string;
+  isActive?: boolean;
 }
 
 interface JournalEntry {
@@ -159,6 +165,8 @@ export default function AccountingModule() {
   const [showPaymentModal, setShowPaymentModal] = useState<Invoice | null>(null);
   const [showEditExpense, setShowEditExpense] = useState<Expense | null>(null);
   const [showViewExpense, setShowViewExpense] = useState<Expense | null>(null);
+  const [showEditAccount, setShowEditAccount] = useState<Account | null>(null);
+  const [showViewAccount, setShowViewAccount] = useState<Account | null>(null);
   const [invoices, setInvoices] = useState(initialInvoices);
   const [expenses, setExpenses] = useState(initialExpenses);
   const [accounts, setAccounts] = useState(initialAccounts);
@@ -248,6 +256,17 @@ export default function AccountingModule() {
     notify({ title: "Account Added", message: `${acc.name} (${acc.code}) added to chart of accounts.`, category: "accounting", priority: "success", actionLabel: "View Accounts", actionModule: "accounting" });
   };
 
+  const handleEditAccount = (acc: Account) => {
+    setAccounts((prev) => prev.map((a) => a.code === acc.code ? acc : a).sort((a, b) => a.code.localeCompare(b.code)));
+    notify({ title: "Account Updated", message: `${acc.name} (${acc.code}) has been updated.`, category: "accounting", priority: "success", actionLabel: "View Accounts", actionModule: "accounting" });
+  };
+
+  const handleDeleteAccount = (code: string) => {
+    const acc = accounts.find((a) => a.code === code);
+    setAccounts((prev) => prev.filter((a) => a.code !== code));
+    if (acc) notify({ title: "Account Removed", message: `${acc.name} (${acc.code}) removed from chart of accounts.`, category: "accounting", priority: "info", actionLabel: "View Accounts", actionModule: "accounting" });
+  };
+
   const handleJournalAdded = (je: JournalEntry) => {
     setJournalEntries((prev) => [je, ...prev]);
     notify({ title: "Journal Entry Posted", message: `${je.description} — Dr. ${je.debit} / Cr. ${je.credit} (${formatCurrency(je.amount)}).`, category: "accounting", priority: "success", actionLabel: "View Journal", actionModule: "accounting" });
@@ -308,7 +327,13 @@ export default function AccountingModule() {
             onResubmit={handleResubmitExpense}
           />
         )}
-        {view === "accounts" && <ChartOfAccountsView accounts={accounts} onAddAccount={() => setShowAddAccount(true)} />}
+        {view === "accounts" && <ChartOfAccountsView
+            accounts={accounts}
+            onAddNew={() => setShowAddAccount(true)}
+            onEdit={(acc) => setShowEditAccount(acc)}
+            onView={(acc) => setShowViewAccount(acc)}
+            onDelete={handleDeleteAccount}
+          />}
         {view === "journal" && <JournalView entries={journalEntries} onAddEntry={() => setShowAddJournal(true)} accounts={accounts} />}
         {view === "reports" && <ReportsView invoices={invoices} expenses={expenses} accounts={accounts} />}
       </div>
@@ -320,7 +345,9 @@ export default function AccountingModule() {
       {showAddExpense && <ExpenseFormModal expense={null} onClose={() => setShowAddExpense(false)} onSave={handleExpenseAdded} />}
       {showEditExpense && <ExpenseFormModal expense={showEditExpense} onClose={() => setShowEditExpense(null)} onSave={(exp) => { handleEditExpense(exp); setShowEditExpense(null); }} />}
       {showViewExpense && <ExpenseDetailModal expense={showViewExpense} onClose={() => setShowViewExpense(null)} onApprove={() => { handleApproveExpense(showViewExpense.id); setShowViewExpense(null); }} onReject={() => { handleRejectExpense(showViewExpense.id); setShowViewExpense(null); }} onEdit={(exp) => { setShowViewExpense(null); setShowEditExpense(exp); }} onDelete={(id) => { handleDeleteExpense(id); setShowViewExpense(null); }} onResubmit={() => { handleResubmitExpense(showViewExpense.id); setShowViewExpense(null); }} />}
-      {showAddAccount && <AddAccountModal onClose={() => setShowAddAccount(false)} onAdded={handleAccountAdded} existing={accounts} />}
+      {showAddAccount && <AccountFormModal account={null} onClose={() => setShowAddAccount(false)} onSave={handleAccountAdded} existing={accounts} />}
+      {showEditAccount && <AccountFormModal account={showEditAccount} onClose={() => setShowEditAccount(null)} onSave={(acc) => { handleEditAccount(acc); setShowEditAccount(null); }} existing={accounts} />}
+      {showViewAccount && <AccountDetailModal account={showViewAccount} onClose={() => setShowViewAccount(null)} onEdit={(acc) => { setShowViewAccount(null); setShowEditAccount(acc); }} onDelete={(code) => { handleDeleteAccount(code); setShowViewAccount(null); }} />}
       {showAddJournal && <AddJournalModal onClose={() => setShowAddJournal(false)} onAdded={handleJournalAdded} accounts={accounts} />}
     </div>
   );
@@ -1105,66 +1132,245 @@ function ExpensesView({ expenses, onAddNew, onApprove, onReject, onDelete, onEdi
 }
 
 // ── Chart of Accounts ─────────────────────────────────────────────────────────
-function ChartOfAccountsView({ accounts, onAddAccount }: { accounts: Account[]; onAddAccount: () => void }) {
-  const grouped: Record<string, Account[]> = {};
-  accounts.forEach((a) => { if (!grouped[a.type]) grouped[a.type] = []; grouped[a.type].push(a); });
+function ChartOfAccountsView({ accounts, onAddNew, onEdit, onView, onDelete }: {
+  accounts: Account[];
+  onAddNew: () => void;
+  onEdit: (acc: Account) => void;
+  onView: (acc: Account) => void;
+  onDelete: (code: string) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [sortBy, setSortBy] = useState<"code" | "name" | "balance-desc" | "balance-asc">("code");
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
-  const typeColors: Record<string, string> = {
-    Asset: "bg-blue-100 text-blue-700",
-    Liability: "bg-red-100 text-red-700",
-    Equity: "bg-purple-100 text-purple-700",
-    Revenue: "bg-green-100 text-green-700",
-    Expense: "bg-orange-100 text-orange-700",
+  const TYPES = ["Asset", "Liability", "Equity", "Revenue", "Expense"] as const;
+
+  const typeColors: Record<string, { badge: string; header: string; bg: string; text: string }> = {
+    Asset:     { badge: "bg-blue-100 text-blue-700",   header: "bg-blue-50 border-blue-100",   bg: "bg-blue-50",   text: "text-blue-700" },
+    Liability: { badge: "bg-red-100 text-red-700",     header: "bg-red-50 border-red-100",     bg: "bg-red-50",    text: "text-red-700" },
+    Equity:    { badge: "bg-purple-100 text-purple-700", header: "bg-purple-50 border-purple-100", bg: "bg-purple-50", text: "text-purple-700" },
+    Revenue:   { badge: "bg-green-100 text-green-700", header: "bg-green-50 border-green-100", bg: "bg-green-50",  text: "text-green-700" },
+    Expense:   { badge: "bg-orange-100 text-orange-700", header: "bg-orange-50 border-orange-100", bg: "bg-orange-50", text: "text-orange-700" },
   };
 
-  const totalAssets = accounts.filter((a) => a.type === "Asset").reduce((s, a) => s + a.balance, 0);
-  const totalLiabilities = accounts.filter((a) => a.type === "Liability").reduce((s, a) => s + a.balance, 0);
-  const totalEquity = accounts.filter((a) => a.type === "Equity").reduce((s, a) => s + a.balance, 0);
+  const totals = useMemo(() => {
+    const t: Record<string, number> = {};
+    TYPES.forEach((tp) => { t[tp] = accounts.filter((a) => a.type === tp).reduce((s, a) => s + a.balance, 0); });
+    return t;
+  }, [accounts]);
+
+  const totalAssets = totals["Asset"] ?? 0;
+  const totalLiabilities = totals["Liability"] ?? 0;
+  const totalEquity = totals["Equity"] ?? 0;
   const isBalanced = Math.abs(totalAssets - totalLiabilities - totalEquity) < 1;
+
+  const filtered = useMemo(() => {
+    let list = accounts.filter((a) => {
+      if (typeFilter !== "all" && a.type !== typeFilter) return false;
+      if (search) {
+        const q = search.toLowerCase();
+        return a.name.toLowerCase().includes(q) || a.code.includes(q) || (a.description ?? "").toLowerCase().includes(q);
+      }
+      return true;
+    });
+    return [...list].sort((a, b) => {
+      if (sortBy === "name") return a.name.localeCompare(b.name);
+      if (sortBy === "balance-desc") return b.balance - a.balance;
+      if (sortBy === "balance-asc") return a.balance - b.balance;
+      return a.code.localeCompare(b.code);
+    });
+  }, [accounts, typeFilter, search, sortBy]);
+
+  const grouped = useMemo(() => {
+    const g: Record<string, Account[]> = {};
+    TYPES.forEach((t) => { g[t] = filtered.filter((a) => a.type === t); });
+    return g;
+  }, [filtered]);
+
+  const toggleCollapse = (type: string) => setCollapsed((p) => ({ ...p, [type]: !p[type] }));
+
+  const exportCsv = () => {
+    const rows = [
+      ["Code", "Name", "Type", "Balance", "Description", "Active"],
+      ...accounts.map((a) => [a.code, a.name, a.type, a.balance, a.description ?? "", a.isActive === false ? "No" : "Yes"]),
+    ];
+    const blob = new Blob([rows.map((r) => r.join(",")).join("\n")], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "chart-of-accounts.csv";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const activeTypes = typeFilter === "all" ? TYPES.slice() : [typeFilter as Account["type"]];
 
   return (
     <div className="max-w-6xl mx-auto">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold">Chart of Accounts</h3>
-        <button onClick={onAddAccount} className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 flex items-center gap-2 text-sm">
-          <Plus size={16} /> Add Account
-        </button>
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
+        {TYPES.map((tp) => (
+          <button
+            key={tp}
+            onClick={() => setTypeFilter(typeFilter === tp ? "all" : tp)}
+            className={`rounded-xl border p-3 text-left transition-all ${typeFilter === tp ? "ring-2 ring-orange-400 " + typeColors[tp].header : "bg-white border-gray-200 hover:border-gray-300"}`}
+          >
+            <p className="text-xs text-gray-500">{tp}</p>
+            <p className={`text-base font-bold mt-0.5 ${typeColors[tp].text}`}>{formatCurrency(totals[tp] ?? 0)}</p>
+            <p className="text-xs text-gray-400 mt-0.5">{accounts.filter((a) => a.type === tp).length} accounts</p>
+          </button>
+        ))}
       </div>
 
-      <div className="bg-white rounded-xl border p-4 mb-4">
-        <p className="text-xs font-semibold text-gray-400 uppercase mb-2">Accounting Equation</p>
-        <div className="flex items-center gap-3 flex-wrap text-sm">
-          <span className="font-semibold text-blue-700">Assets: {formatCurrency(totalAssets)}</span>
-          <span className="text-gray-400 font-bold">=</span>
-          <span className="font-semibold text-red-700">Liabilities: {formatCurrency(totalLiabilities)}</span>
-          <span className="text-gray-400 font-bold">+</span>
-          <span className="font-semibold text-purple-700">Equity: {formatCurrency(totalEquity)}</span>
-          <span className={`ml-auto text-xs px-2.5 py-1 rounded-full font-medium ${isBalanced ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-            {isBalanced ? "✓ Balanced" : "⚠ Unbalanced"}
-          </span>
+      {/* Accounting Equation + Trial Balance */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+        <div className="bg-white rounded-xl border p-4">
+          <p className="text-xs font-semibold text-gray-400 uppercase mb-2.5">Accounting Equation</p>
+          <div className="flex items-center gap-2 flex-wrap text-sm">
+            <span className="font-semibold text-blue-700">{formatCurrency(totalAssets)}</span>
+            <span className="text-gray-400 text-xs">Assets =</span>
+            <span className="font-semibold text-red-700">{formatCurrency(totalLiabilities)}</span>
+            <span className="text-gray-400 text-xs">Liabilities +</span>
+            <span className="font-semibold text-purple-700">{formatCurrency(totalEquity)}</span>
+            <span className="text-gray-400 text-xs">Equity</span>
+          </div>
+          <div className="mt-2">
+            <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${isBalanced ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+              {isBalanced ? "✓ Balanced" : `⚠ Off by ${formatCurrency(Math.abs(totalAssets - totalLiabilities - totalEquity))}`}
+            </span>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl border p-4">
+          <p className="text-xs font-semibold text-gray-400 uppercase mb-2.5">Summary</p>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="flex justify-between"><span className="text-gray-500">Total Revenue</span><span className="font-semibold text-green-700">{formatCurrency(totals["Revenue"] ?? 0)}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Total Expenses</span><span className="font-semibold text-orange-700">{formatCurrency(totals["Expense"] ?? 0)}</span></div>
+            <div className="flex justify-between col-span-2 border-t pt-1.5"><span className="text-gray-600 font-medium">Net Income</span><span className={`font-bold ${(totals["Revenue"] ?? 0) - (totals["Expense"] ?? 0) >= 0 ? "text-green-700" : "text-red-700"}`}>{formatCurrency((totals["Revenue"] ?? 0) - (totals["Expense"] ?? 0))}</span></div>
+            <div className="flex justify-between col-span-2"><span className="text-gray-500">Total Accounts</span><span className="font-semibold text-gray-700">{accounts.length}</span></div>
+          </div>
         </div>
       </div>
 
-      <div className="space-y-4">
-        {Object.entries(grouped).map(([type, accs]) => (
-          <div key={type} className="bg-white rounded-xl border overflow-hidden">
-            <div className="bg-gray-50 px-4 py-2.5 border-b flex items-center justify-between">
-              <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${typeColors[type]}`}>{type}</span>
-              <span className="text-sm font-semibold text-gray-700">{formatCurrency(accs.reduce((s, a) => s + a.balance, 0))}</span>
-            </div>
-            <table className="w-full text-sm">
-              <tbody>
-                {accs.map((acc) => (
-                  <tr key={acc.code} className="border-b last:border-0 hover:bg-gray-50">
-                    <td className="px-4 py-2.5 text-gray-400 w-20 font-mono text-xs">{acc.code}</td>
-                    <td className="px-4 py-2.5 font-medium">{acc.name}</td>
-                    <td className="px-4 py-2.5 text-right font-semibold">{formatCurrency(acc.balance)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {/* Toolbar */}
+      <div className="flex flex-col sm:flex-row gap-3 mb-4">
+        <div className="flex gap-1 flex-wrap">
+          <button onClick={() => setTypeFilter("all")} className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${typeFilter === "all" ? "bg-orange-100 text-orange-700" : "text-gray-500 hover:bg-gray-100"}`}>
+            All <span className="text-gray-400">({accounts.length})</span>
+          </button>
+          {TYPES.map((tp) => (
+            <button key={tp} onClick={() => setTypeFilter(typeFilter === tp ? "all" : tp)} className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${typeFilter === tp ? "bg-orange-100 text-orange-700" : "text-gray-500 hover:bg-gray-100"}`}>
+              {tp} <span className="text-gray-400">({accounts.filter((a) => a.type === tp).length})</span>
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2 ml-auto flex-wrap items-center">
+          <select value={sortBy} onChange={(e) => setSortBy(e.target.value as typeof sortBy)} className="px-2.5 py-1.5 border rounded-lg text-xs focus:ring-2 focus:ring-orange-400 outline-none">
+            <option value="code">Sort: Code</option>
+            <option value="name">Sort: Name A–Z</option>
+            <option value="balance-desc">Sort: Highest Balance</option>
+            <option value="balance-asc">Sort: Lowest Balance</option>
+          </select>
+          <div className="relative">
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input type="text" placeholder="Search accounts..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8 pr-3 py-1.5 border rounded-lg text-sm w-44 focus:ring-2 focus:ring-orange-400 outline-none" />
           </div>
-        ))}
+          <button onClick={exportCsv} title="Export CSV" className="px-3 py-1.5 border rounded-lg text-xs text-gray-600 hover:bg-gray-50 flex items-center gap-1.5">
+            <Download size={13} /> Export
+          </button>
+          <button onClick={onAddNew} className="px-3 py-1.5 bg-orange-600 text-white rounded-lg hover:bg-orange-700 flex items-center gap-1.5 text-sm whitespace-nowrap">
+            <Plus size={15} /> Add Account
+          </button>
+        </div>
+      </div>
+
+      {/* Grouped Tables */}
+      {filtered.length === 0 && (
+        <div className="bg-white rounded-xl border py-16 text-center text-gray-400">No accounts match your search</div>
+      )}
+      <div className="space-y-3">
+        {activeTypes.map((type) => {
+          const accs = grouped[type] ?? [];
+          if (accs.length === 0 && search === "") return null;
+          const isCollapsed = collapsed[type];
+          const subtotal = accs.reduce((s, a) => s + a.balance, 0);
+          const c = typeColors[type];
+          return (
+            <div key={type} className="bg-white rounded-xl border overflow-hidden">
+              <button
+                onClick={() => toggleCollapse(type)}
+                className={`w-full px-4 py-3 border-b flex items-center justify-between ${c.header} hover:opacity-90 transition-opacity`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${c.badge}`}>{type}</span>
+                  <span className="text-xs text-gray-500">{accs.length} account{accs.length !== 1 ? "s" : ""}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className={`text-sm font-bold ${c.text}`}>{formatCurrency(subtotal)}</span>
+                  {isCollapsed ? <ChevronDown size={14} className="text-gray-400" /> : <ChevronUp size={14} className="text-gray-400" />}
+                </div>
+              </button>
+              {!isCollapsed && (
+                <>
+                  {accs.length === 0 ? (
+                    <p className="text-center py-6 text-xs text-gray-400">No accounts found</p>
+                  ) : (
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 border-b">
+                        <tr>
+                          <th className="text-left px-4 py-2 font-medium text-gray-500 text-xs w-20">Code</th>
+                          <th className="text-left px-4 py-2 font-medium text-gray-500 text-xs">Account Name</th>
+                          <th className="text-left px-4 py-2 font-medium text-gray-500 text-xs hidden md:table-cell">Description</th>
+                          <th className="text-center px-4 py-2 font-medium text-gray-500 text-xs hidden sm:table-cell">Status</th>
+                          <th className="text-right px-4 py-2 font-medium text-gray-500 text-xs">Balance</th>
+                          <th className="text-center px-4 py-2 font-medium text-gray-500 text-xs">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {accs.map((acc) => (
+                          <tr key={acc.code} className={`border-b last:border-0 hover:bg-gray-50 transition-colors ${acc.isActive === false ? "opacity-60" : ""}`}>
+                            <td className="px-4 py-2.5 font-mono text-xs text-gray-400">{acc.code}</td>
+                            <td className="px-4 py-2.5">
+                              <p className="font-medium text-gray-800">{acc.name}</p>
+                            </td>
+                            <td className="px-4 py-2.5 text-xs text-gray-400 hidden md:table-cell">{acc.description ?? "—"}</td>
+                            <td className="px-4 py-2.5 text-center hidden sm:table-cell">
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${acc.isActive === false ? "bg-gray-100 text-gray-400" : "bg-green-100 text-green-700"}`}>
+                                {acc.isActive === false ? "Inactive" : "Active"}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2.5 text-right">
+                              <span className={`font-semibold ${acc.balance < 0 ? "text-red-600" : "text-gray-800"}`}>{formatCurrency(acc.balance)}</span>
+                            </td>
+                            <td className="px-4 py-2.5">
+                              <div className="flex justify-center gap-1">
+                                <button onClick={() => onView(acc)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700" title="View"><Eye size={13} /></button>
+                                <button onClick={() => onEdit(acc)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-blue-600" title="Edit"><Edit3 size={13} /></button>
+                                <button
+                                  onClick={() => { if (confirm(`Remove account "${acc.name}" (${acc.code})? This cannot be undone.`)) onDelete(acc.code); }}
+                                  className="p-1.5 rounded hover:bg-red-50 text-gray-300 hover:text-red-500"
+                                  title="Delete"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-gray-50 border-t">
+                        <tr>
+                          <td colSpan={4} className="px-4 py-2 text-xs text-gray-400">{accs.length} account{accs.length !== 1 ? "s" : ""}</td>
+                          <td className={`px-4 py-2 text-right text-sm font-bold ${c.text}`}>{formatCurrency(subtotal)}</td>
+                          <td />
+                        </tr>
+                      </tfoot>
+                    </table>
+                  )}
+                </>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1983,50 +2189,177 @@ function ExpenseFormModal({ expense, onClose, onSave }: {
 }
 
 
-function AddAccountModal({ onClose, onAdded, existing }: { onClose: () => void; onAdded: (a: Account) => void; existing: Account[] }) {
-  const [form, setForm] = useState({ code: "", name: "", type: "Asset" as Account["type"], balance: "" });
-  const codeExists = existing.some((a) => a.code === form.code);
+function AccountDetailModal({ account: acc, onClose, onEdit, onDelete }: {
+  account: Account;
+  onClose: () => void;
+  onEdit: (acc: Account) => void;
+  onDelete: (code: string) => void;
+}) {
+  const typeColors: Record<string, string> = {
+    Asset: "bg-blue-50 text-blue-700 border-blue-200",
+    Liability: "bg-red-50 text-red-700 border-red-200",
+    Equity: "bg-purple-50 text-purple-700 border-purple-200",
+    Revenue: "bg-green-50 text-green-700 border-green-200",
+    Expense: "bg-orange-50 text-orange-700 border-orange-200",
+  };
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between p-5 border-b">
+          <div>
+            <p className="font-mono text-xs text-gray-400 mb-0.5">{acc.code}</p>
+            <h3 className="text-lg font-bold text-gray-800">{acc.name}</h3>
+          </div>
+          <div className="flex items-center gap-1">
+            <button onClick={() => onEdit(acc)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500" title="Edit"><Edit3 size={15} /></button>
+            <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 ml-1"><X size={18} /></button>
+          </div>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-gray-50 rounded-xl p-3">
+              <p className="text-xs text-gray-400 mb-1">Type</p>
+              <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border ${typeColors[acc.type]}`}>{acc.type}</span>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-3">
+              <p className="text-xs text-gray-400 mb-1">Status</p>
+              <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${acc.isActive === false ? "bg-gray-100 text-gray-500" : "bg-green-100 text-green-700"}`}>
+                {acc.isActive === false ? "Inactive" : "Active"}
+              </span>
+            </div>
+            <div className="col-span-2 bg-gray-50 rounded-xl p-3">
+              <p className="text-xs text-gray-400 mb-1">Current Balance</p>
+              <p className={`text-2xl font-bold ${acc.balance < 0 ? "text-red-600" : "text-gray-900"}`}>{formatCurrency(acc.balance)}</p>
+            </div>
+          </div>
+          {acc.description && (
+            <div className="bg-gray-50 rounded-xl p-3">
+              <p className="text-xs text-gray-400 mb-1">Description</p>
+              <p className="text-sm text-gray-600">{acc.description}</p>
+            </div>
+          )}
+          <div className="flex gap-2 pt-1 border-t">
+            <button onClick={() => onEdit(acc)} className="flex-1 py-2.5 border rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center justify-center gap-1.5">
+              <Edit3 size={14} /> Edit Account
+            </button>
+            <button
+              onClick={() => { if (confirm(`Remove "${acc.name}" (${acc.code})? This cannot be undone.`)) { onDelete(acc.code); onClose(); } }}
+              className="flex-1 py-2.5 border border-red-200 text-red-600 hover:bg-red-50 rounded-xl text-sm font-medium flex items-center justify-center gap-1.5"
+            >
+              <Trash2 size={14} /> Delete
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AccountFormModal({ account, onClose, onSave, existing }: {
+  account: Account | null;
+  onClose: () => void;
+  onSave: (acc: Account) => void;
+  existing: Account[];
+}) {
+  const typeHelp: Record<string, string> = {
+    Asset: "Resources the business owns (cash, receivables, equipment)",
+    Liability: "Obligations the business owes (payables, loans)",
+    Equity: "Owner's interest in the business",
+    Revenue: "Income earned from operations",
+    Expense: "Costs incurred in running the business",
+  };
+  const [form, setForm] = useState({
+    code: account?.code ?? "",
+    name: account?.name ?? "",
+    type: account?.type ?? "Asset" as Account["type"],
+    balance: account?.balance.toString() ?? "",
+    description: account?.description ?? "",
+    isActive: account?.isActive !== false,
+  });
+  const sf = <K extends keyof typeof form>(k: K, v: typeof form[K]) => setForm((p) => ({ ...p, [k]: v }));
+
+  const codeExists = existing.some((a) => a.code === form.code && (!account || a.code !== account.code));
+  const codeFormatOk = /^\d{4,6}$/.test(form.code);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (codeExists) return;
-    onAdded({ code: form.code, name: form.name, type: form.type, balance: parseFloat(form.balance) || 0 });
+    if (codeExists || !codeFormatOk) return;
+    onSave({
+      code: form.code,
+      name: form.name,
+      type: form.type as Account["type"],
+      balance: parseFloat(form.balance) || 0,
+      description: form.description || undefined,
+      isActive: form.isActive,
+    });
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 max-w-md w-full space-y-4">
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 max-w-md w-full max-h-[92vh] overflow-y-auto shadow-2xl space-y-4" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
-          <h3 className="text-lg font-bold">Add Account</h3>
-          <button type="button" onClick={onClose} className="p-1 rounded hover:bg-gray-100"><X size={20} /></button>
+          <h3 className="text-lg font-bold">{account ? "Edit Account" : "New Account"}</h3>
+          <button type="button" onClick={onClose} className="p-1.5 rounded hover:bg-gray-100"><X size={20} /></button>
         </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-gray-600 block mb-1">Account Code *</label>
+            <input
+              required
+              value={form.code}
+              onChange={(e) => sf("code", e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="e.g. 1150"
+              readOnly={!!account}
+              className={`w-full px-3 py-2 border rounded-lg text-sm font-mono focus:ring-2 focus:ring-orange-400 outline-none ${codeExists ? "border-red-400 bg-red-50" : account ? "bg-gray-50 text-gray-500" : ""}`}
+            />
+            {codeExists && <p className="text-xs text-red-500 mt-1">Code already in use</p>}
+            {!codeExists && form.code && !codeFormatOk && <p className="text-xs text-yellow-600 mt-1">Use 4–6 digits</p>}
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-600 block mb-1">Account Type *</label>
+            <select value={form.type} onChange={(e) => sf("type", e.target.value as Account["type"])} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-orange-400 outline-none">
+              {(["Asset", "Liability", "Equity", "Revenue", "Expense"] as const).map((t) => <option key={t}>{t}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {form.type && (
+          <p className="text-xs text-gray-400 bg-gray-50 px-3 py-2 rounded-lg -mt-1">{typeHelp[form.type]}</p>
+        )}
+
         <div>
-          <label className="text-xs font-medium text-gray-600">Account Code *</label>
-          <input required value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="e.g. 1150" className={`w-full mt-1 px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-orange-400 outline-none ${codeExists ? "border-red-400" : ""}`} />
-          {codeExists && <p className="text-xs text-red-500 mt-1">Account code already exists</p>}
+          <label className="text-xs font-medium text-gray-600 block mb-1">Account Name *</label>
+          <input required value={form.name} onChange={(e) => sf("name", e.target.value)} placeholder="e.g. Prepaid Expenses" className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-orange-400 outline-none" />
         </div>
+
         <div>
-          <label className="text-xs font-medium text-gray-600">Account Name *</label>
-          <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Prepaid Expenses" className="w-full mt-1 px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-orange-400 outline-none" />
+          <label className="text-xs font-medium text-gray-600 block mb-1">Description (optional)</label>
+          <input value={form.description} onChange={(e) => sf("description", e.target.value)} placeholder="Brief description of this account" className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-orange-400 outline-none" />
         </div>
+
         <div>
-          <label className="text-xs font-medium text-gray-600">Account Type *</label>
-          <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as Account["type"] })} className="w-full mt-1 px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-orange-400 outline-none">
-            {(["Asset", "Liability", "Equity", "Revenue", "Expense"] as const).map((t) => <option key={t}>{t}</option>)}
-          </select>
+          <label className="text-xs font-medium text-gray-600 block mb-1">{account ? "Current Balance ($)" : "Opening Balance ($)"}</label>
+          <input type="number" step="0.01" value={form.balance} onChange={(e) => sf("balance", e.target.value)} placeholder="0.00" className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-orange-400 outline-none" />
         </div>
-        <div>
-          <label className="text-xs font-medium text-gray-600">Opening Balance ($)</label>
-          <input type="number" step="0.01" min="0" value={form.balance} onChange={(e) => setForm({ ...form, balance: e.target.value })} placeholder="0.00" className="w-full mt-1 px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-orange-400 outline-none" />
+
+        <label className="flex items-center gap-2.5 cursor-pointer">
+          <input type="checkbox" checked={form.isActive} onChange={(e) => sf("isActive", e.target.checked)} className="w-4 h-4 accent-orange-600 rounded" />
+          <span className="text-sm text-gray-700">Account is active</span>
+        </label>
+
+        <div className="flex gap-3">
+          <button type="button" onClick={onClose} className="flex-1 py-2.5 border rounded-xl text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
+          <button type="submit" disabled={codeExists || (!!form.code && !codeFormatOk)} className="flex-1 py-2.5 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white rounded-xl font-medium text-sm">
+            {account ? "Save Changes" : "Add Account"}
+          </button>
         </div>
-        <button type="submit" disabled={codeExists} className="w-full py-2.5 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white rounded-xl font-medium text-sm">
-          Add Account
-        </button>
       </form>
     </div>
   );
 }
+
 
 function AddJournalModal({ onClose, onAdded, accounts }: { onClose: () => void; onAdded: (je: JournalEntry) => void; accounts: Account[] }) {
   const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), description: "", reference: "", debit: "", credit: "", amount: "" });
