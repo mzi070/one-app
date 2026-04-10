@@ -1,6 +1,8 @@
 "use client";
 
-import { useAppStore } from "@/store";
+import { useEffect, useState, useMemo } from "react";
+import { useAppStore, useHRStore, usePOSSalesStore, useNotificationStore } from "@/store";
+import { formatCurrency } from "@/lib/utils";
 import {
   ShoppingCart,
   Users,
@@ -11,33 +13,140 @@ import {
   UserCheck,
   FileCheck,
   ArrowUpRight,
+  ArrowDownRight,
 } from "lucide-react";
 
-const quickLinks = [
-  { module: "pos" as const, label: "Point of Sale", desc: "Manage sales, inventory & customers", icon: ShoppingCart, color: "from-green-500 to-emerald-600", stat: "New Sale" },
-  { module: "hr" as const, label: "HR Management", desc: "Employees, attendance & payroll", icon: Users, color: "from-purple-500 to-violet-600", stat: "24 Staff" },
-  { module: "accounting" as const, label: "Accounting", desc: "Invoices, expenses & reports", icon: Calculator, color: "from-orange-500 to-amber-600", stat: "$12.4K" },
-  { module: "pdf" as const, label: "PDF Tools", desc: "Merge, split, compress & convert", icon: FileText, color: "from-red-500 to-rose-600", stat: "12 Tools" },
+function relativeTime(ts: string): string {
+  const diff = Date.now() - new Date(ts).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} hour${hrs > 1 ? "s" : ""} ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days} day${days > 1 ? "s" : ""} ago`;
+}
+
+const MODULE_LINKS = [
+  { module: "pos" as const, label: "Point of Sale", desc: "Manage sales, inventory & customers", icon: ShoppingCart, color: "from-green-500 to-emerald-600" },
+  { module: "hr" as const, label: "HR Management", desc: "Employees, attendance & payroll", icon: Users, color: "from-purple-500 to-violet-600" },
+  { module: "accounting" as const, label: "Accounting", desc: "Invoices, expenses & reports", icon: Calculator, color: "from-orange-500 to-amber-600" },
+  { module: "pdf" as const, label: "PDF Tools", desc: "Merge, split, compress & convert", icon: FileText, color: "from-red-500 to-rose-600" },
 ];
 
-const stats = [
-  { label: "Today's Sales", value: "$2,847", change: "+12.5%", icon: DollarSign, color: "text-green-600 bg-green-50" },
-  { label: "Active Employees", value: "24", change: "+2", icon: UserCheck, color: "text-purple-600 bg-purple-50" },
-  { label: "Pending Invoices", value: "8", change: "-3", icon: FileCheck, color: "text-orange-600 bg-orange-50" },
-  { label: "Revenue Growth", value: "18.2%", change: "+4.1%", icon: TrendingUp, color: "text-blue-600 bg-blue-50" },
-];
-
-const recentActivity = [
-  { action: "Sale completed", detail: "Invoice #INV-0847 - $345.00", time: "2 min ago", type: "sale" },
-  { action: "Employee clocked in", detail: "John Smith - 9:00 AM", time: "15 min ago", type: "hr" },
-  { action: "Invoice sent", detail: "INV-2024-089 to Acme Corp", time: "1 hour ago", type: "accounting" },
-  { action: "PDF merged", detail: "3 files merged successfully", time: "2 hours ago", type: "pdf" },
-  { action: "New product added", detail: "Wireless Keyboard - $49.99", time: "3 hours ago", type: "sale" },
-  { action: "Leave approved", detail: "Jane Doe - 5 days vacation", time: "5 hours ago", type: "hr" },
-];
+const NOTIF_TYPE_COLOR: Record<string, string> = {
+  pos: "bg-green-500",
+  hr: "bg-purple-500",
+  accounting: "bg-orange-500",
+  pdf: "bg-red-500",
+  system: "bg-blue-500",
+};
 
 export default function Dashboard() {
   const setModule = useAppStore((s) => s.setModule);
+  const employees = useHRStore((s) => s.employees);
+  const salesHistory = usePOSSalesStore((s) => s.salesHistory);
+  const notifications = useNotificationStore((s) => s.notifications);
+
+  const [pendingInvoices, setPendingInvoices] = useState(0);
+  const [overdueCount, setOverdueCount] = useState(0);
+  const [productCount, setProductCount] = useState(0);
+
+  useEffect(() => {
+    fetch("/api/invoices")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setPendingInvoices(data.filter((i) => i.status === "sent" || i.status === "overdue").length);
+          setOverdueCount(data.filter((i) => i.status === "overdue").length);
+        }
+      })
+      .catch(() => {});
+    fetch("/api/products")
+      .then((r) => r.json())
+      .then((data) => { if (Array.isArray(data)) setProductCount(data.length); })
+      .catch(() => {});
+  }, []);
+
+  const todayStr = new Date().toISOString().split("T")[0];
+
+  const todaySales = useMemo(
+    () => salesHistory.filter((s) => s.timestamp.startsWith(todayStr)).reduce((sum, s) => sum + s.total, 0),
+    [salesHistory, todayStr]
+  );
+  const todayOrderCount = useMemo(
+    () => salesHistory.filter((s) => s.timestamp.startsWith(todayStr)).length,
+    [salesHistory, todayStr]
+  );
+  const activeEmployees = useMemo(() => employees.filter((e) => e.status === "active").length, [employees]);
+
+  const { thisMonth, thisYear, lastMonth, lastYear } = useMemo(() => {
+    const now = new Date();
+    const m = now.getMonth();
+    const y = now.getFullYear();
+    return { thisMonth: m, thisYear: y, lastMonth: m === 0 ? 11 : m - 1, lastYear: m === 0 ? y - 1 : y };
+  }, []);
+
+  const thisMonthRevenue = useMemo(
+    () => salesHistory
+      .filter((s) => { const d = new Date(s.timestamp); return d.getMonth() === thisMonth && d.getFullYear() === thisYear; })
+      .reduce((sum, s) => sum + s.total, 0),
+    [salesHistory, thisMonth, thisYear]
+  );
+  const lastMonthRevenue = useMemo(
+    () => salesHistory
+      .filter((s) => { const d = new Date(s.timestamp); return d.getMonth() === lastMonth && d.getFullYear() === lastYear; })
+      .reduce((sum, s) => sum + s.total, 0),
+    [salesHistory, lastMonth, lastYear]
+  );
+
+  const revenueGrowthNum = lastMonthRevenue > 0
+    ? ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100
+    : thisMonthRevenue > 0 ? 100 : 0;
+  const revenueGrowthStr = lastMonthRevenue === 0 && thisMonthRevenue === 0 ? "—" : `${revenueGrowthNum >= 0 ? "+" : ""}${revenueGrowthNum.toFixed(1)}%`;
+  const revenuePositive = revenueGrowthNum >= 0;
+
+  const stats = [
+    {
+      label: "Today's Sales",
+      value: formatCurrency(todaySales),
+      change: todayOrderCount > 0 ? `${todayOrderCount} order${todayOrderCount !== 1 ? "s" : ""} today` : "No sales yet",
+      icon: DollarSign,
+      color: "text-green-600 bg-green-50",
+      positive: true,
+    },
+    {
+      label: "Active Employees",
+      value: String(activeEmployees),
+      change: employees.length > 0 ? `of ${employees.length} total` : "No employees yet",
+      icon: UserCheck,
+      color: "text-purple-600 bg-purple-50",
+      positive: true,
+    },
+    {
+      label: "Pending Invoices",
+      value: String(pendingInvoices),
+      change: overdueCount > 0 ? `${overdueCount} overdue` : "None overdue",
+      icon: FileCheck,
+      color: overdueCount > 0 ? "text-red-600 bg-red-50" : "text-orange-600 bg-orange-50",
+      positive: overdueCount === 0,
+    },
+    {
+      label: "Revenue Growth",
+      value: revenueGrowthStr,
+      change: "vs last month",
+      icon: TrendingUp,
+      color: revenuePositive ? "text-blue-600 bg-blue-50" : "text-red-600 bg-red-50",
+      positive: revenuePositive,
+    },
+  ];
+
+  const quickLinks = [
+    { ...MODULE_LINKS[0], stat: todaySales > 0 ? formatCurrency(todaySales) : "New Sale" },
+    { ...MODULE_LINKS[1], stat: activeEmployees > 0 ? `${activeEmployees} Active` : "Manage Staff" },
+    { ...MODULE_LINKS[2], stat: pendingInvoices > 0 ? `${pendingInvoices} Pending` : "View Reports" },
+    { ...MODULE_LINKS[3], stat: productCount > 0 ? `${productCount} Products` : "Tools" },
+  ];
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
@@ -53,14 +162,15 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((stat) => {
           const Icon = stat.icon;
+          const Arrow = stat.positive ? ArrowUpRight : ArrowDownRight;
           return (
             <div key={stat.label} className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between">
                 <div className={`p-2 rounded-lg ${stat.color}`}>
                   <Icon size={20} />
                 </div>
-                <span className="text-xs font-medium text-green-600 flex items-center gap-0.5">
-                  {stat.change} <ArrowUpRight size={12} />
+                <span className={`text-xs font-medium flex items-center gap-0.5 ${stat.positive ? "text-green-600" : "text-red-500"}`}>
+                  {stat.change} <Arrow size={12} />
                 </span>
               </div>
               <p className="mt-3 text-2xl font-bold text-gray-900">{stat.value}</p>
@@ -94,34 +204,29 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Recent Activity */}
+      {/* Recent Activity from notification log */}
       <div className="bg-white rounded-xl border border-gray-200 p-5">
         <h3 className="text-lg font-semibold text-gray-800 mb-4">Recent Activity</h3>
-        <div className="space-y-3">
-          {recentActivity.map((activity, i) => (
-            <div key={i} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
-              <div className="flex items-center gap-3">
-                <div
-                  className={`w-2 h-2 rounded-full ${
-                    activity.type === "sale"
-                      ? "bg-green-500"
-                      : activity.type === "hr"
-                      ? "bg-purple-500"
-                      : activity.type === "accounting"
-                      ? "bg-orange-500"
-                      : "bg-red-500"
-                  }`}
-                />
-                <div>
-                  <p className="text-sm font-medium text-gray-800">{activity.action}</p>
-                  <p className="text-xs text-gray-500">{activity.detail}</p>
+        {notifications.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-6">No activity yet. Activity will appear here as you use the app.</p>
+        ) : (
+          <div className="space-y-3">
+            {notifications.slice(0, 6).map((n) => (
+              <div key={n.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                <div className="flex items-center gap-3">
+                  <div className={`w-2 h-2 rounded-full shrink-0 ${NOTIF_TYPE_COLOR[n.category] ?? "bg-gray-400"}`} />
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">{n.title}</p>
+                    <p className="text-xs text-gray-500">{n.message}</p>
+                  </div>
                 </div>
+                <span className="text-xs text-gray-400 whitespace-nowrap ml-4">{relativeTime(n.timestamp)}</span>
               </div>
-              <span className="text-xs text-gray-400 whitespace-nowrap">{activity.time}</span>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
 }
+
