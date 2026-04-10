@@ -8,6 +8,7 @@ export async function POST(request: NextRequest) {
     const tool = formData.get("tool") as string;
     const optionsStr = formData.get("options") as string;
     const options = optionsStr ? JSON.parse(optionsStr) : {};
+    const stampFile = formData.get("stamp") as File | null;
 
     if (files.length === 0) {
       return NextResponse.json({ error: "No files provided" }, { status: 400 });
@@ -62,6 +63,24 @@ export async function POST(request: NextRequest) {
           { error: "PDF to Images requires client-side rendering and is not yet available on this server." },
           { status: 422 }
         );
+      case "add-text":
+        resultPdf = await addTextToPDF(files[0], {
+          text:     options.addText || "",
+          position: options.addTextPosition || "bottom-center",
+          size:     typeof options.addTextSize === "number" ? options.addTextSize : 14,
+          color:    options.addTextColor || "#000000",
+          pages:    options.addTextPages || "all",
+        });
+        break;
+      case "add-image-stamp":
+        if (!stampFile) throw new Error("No stamp image uploaded. Please select a PNG or JPG file.");
+        resultPdf = await addImageStamp(files[0], stampFile, {
+          position: options.stampPosition || "bottom-right",
+          scale:    typeof options.stampScale === "number" ? options.stampScale : 25,
+          opacity:  typeof options.stampOpacity === "number" ? options.stampOpacity : 0.85,
+          pages:    options.stampPages || "all",
+        });
+        break;
       default:
         // Default: return the original file
         const buf = await files[0].arrayBuffer();
@@ -289,4 +308,94 @@ async function rearrangePDF(file: File, pageOrder: string): Promise<Uint8Array> 
   const pages = await newPdf.copyPages(pdf, indices);
   pages.forEach((page) => newPdf.addPage(page));
   return newPdf.save();
+}
+
+// ── Editing helpers ───────────────────────────────────────────────────────────
+
+function hexToRgb(hex: string): [number, number, number] {
+  const clean = hex.replace("#", "");
+  const r = parseInt(clean.slice(0, 2), 16) / 255;
+  const g = parseInt(clean.slice(2, 4), 16) / 255;
+  const b = parseInt(clean.slice(4, 6), 16) / 255;
+  return [isNaN(r) ? 0 : r, isNaN(g) ? 0 : g, isNaN(b) ? 0 : b];
+}
+
+function getPagesIndices(pagesOption: string, totalPages: number): number[] {
+  if (!pagesOption || pagesOption.trim().toLowerCase() === "all") {
+    return Array.from({ length: totalPages }, (_, i) => i);
+  }
+  return parsePageRanges(pagesOption)
+    .map((p) => p - 1)
+    .filter((i) => i >= 0 && i < totalPages);
+}
+
+async function addTextToPDF(
+  file: File,
+  opts: { text: string; position: string; size: number; color: string; pages: string }
+): Promise<Uint8Array> {
+  const bytes = await file.arrayBuffer();
+  const pdf   = await PDFDocument.load(bytes);
+  const font  = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const allPages     = pdf.getPages();
+  const targetIndices = getPagesIndices(opts.pages, allPages.length);
+  const [r, g, b]   = hexToRgb(opts.color || "#000000");
+  const fontSize     = opts.size || 14;
+  const text         = opts.text || "";
+
+  targetIndices.forEach((idx) => {
+    const page = allPages[idx];
+    const { width, height } = page.getSize();
+    const textWidth = font.widthOfTextAtSize(text, fontSize);
+
+    let x = (width - textWidth) / 2;
+    let y = 30;
+
+    if (opts.position.includes("left"))   x = 40;
+    if (opts.position.includes("right"))  x = Math.max(0, width - textWidth - 40);
+    if (opts.position.includes("top"))    y = height - 50;
+
+    page.drawText(text, { x, y, size: fontSize, font, color: rgb(r, g, b) });
+  });
+
+  return pdf.save();
+}
+
+async function addImageStamp(
+  pdfFile: File,
+  stampFile: File,
+  opts: { position: string; scale: number; opacity: number; pages: string }
+): Promise<Uint8Array> {
+  const pdfBytes  = await pdfFile.arrayBuffer();
+  const pdf       = await PDFDocument.load(pdfBytes);
+  const stampBytes = await stampFile.arrayBuffer();
+
+  const image = stampFile.type === "image/png"
+    ? await pdf.embedPng(stampBytes)
+    : await pdf.embedJpg(stampBytes);
+
+  const allPages      = pdf.getPages();
+  const targetIndices = getPagesIndices(opts.pages, allPages.length);
+  const scaleFactor   = (opts.scale || 25) / 100;
+  const opacity       = opts.opacity ?? 0.85;
+  const margin        = 20;
+
+  targetIndices.forEach((idx) => {
+    const page = allPages[idx];
+    const { width, height } = page.getSize();
+    const imgWidth  = width * scaleFactor;
+    const imgHeight = (image.height / image.width) * imgWidth;
+
+    let x = (width - imgWidth) / 2;
+    let y = (height - imgHeight) / 2;
+
+    if (opts.position.includes("left"))   x = margin;
+    if (opts.position.includes("right"))  x = width - imgWidth - margin;
+    if (opts.position.includes("top"))    y = height - imgHeight - margin;
+    if (opts.position.includes("bottom")) y = margin;
+    // "center" keeps the centered defaults
+
+    page.drawImage(image, { x, y, width: imgWidth, height: imgHeight, opacity });
+  });
+
+  return pdf.save();
 }

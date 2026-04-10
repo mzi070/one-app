@@ -5,14 +5,15 @@ import {
   FileText, Merge, Scissors, Minimize2, Lock, Unlock, RotateCw, Trash2,
   FileImage, Upload, CheckCircle, X, ArrowRight, FilePlus, FileDown,
   Stamp, Hash, SortAsc, Loader2, AlertCircle, Download, RotateCcw,
-  Clock, ChevronRight, Zap, Info,
+  Clock, ChevronRight, Zap, Info, Type, Layers,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type PDFTool =
   | null | "merge" | "split" | "compress" | "protect" | "unlock" | "rotate"
   | "remove-pages" | "extract-pages" | "images-to-pdf" | "pdf-to-images"
-  | "watermark" | "page-numbers" | "rearrange";
+  | "watermark" | "page-numbers" | "rearrange"
+  | "add-text" | "add-image-stamp";
 
 interface ToolConfig {
   id: PDFTool;
@@ -38,7 +39,9 @@ const tools: ToolConfig[] = [
   { id: "protect",       name: "Protect PDF",       description: "Mark PDF with a protection notice",     icon: Lock,      color: "from-yellow-500 to-amber-600",  category: "Security" },
   { id: "unlock",        name: "Unlock PDF",        description: "Attempt to remove PDF password",        icon: Unlock,    color: "from-purple-500 to-violet-600", category: "Security" },
   { id: "images-to-pdf", name: "Images to PDF",    description: "Convert JPG / PNG images into a PDF",   icon: FilePlus,  color: "from-orange-500 to-amber-600",  category: "Convert"  },
-  { id: "pdf-to-images", name: "PDF to Images",    description: "Extract each page as an image file",    icon: FileImage, color: "from-pink-500 to-rose-600",    category: "Convert",  comingSoon: true },
+  { id: "pdf-to-images",    name: "PDF to Images",  description: "Extract each page as an image file",     icon: FileImage, color: "from-pink-500 to-rose-600",    category: "Convert",  comingSoon: true },
+  { id: "add-text",        name: "Add Text",       description: "Stamp custom text onto PDF pages",       icon: Type,      color: "from-blue-500 to-indigo-600",   category: "Edit"     },
+  { id: "add-image-stamp", name: "Image Stamp",    description: "Overlay a logo or image on each page",   icon: Layers,    color: "from-pink-500 to-fuchsia-600",  category: "Edit"     },
 ];
 
 const categories = ["All", "Organize", "Edit", "Convert", "Optimize", "Security"];
@@ -225,9 +228,21 @@ function PDFToolWorkspace({ tool, onBack }: { tool: ToolConfig; onBack: () => vo
     pageNumberPosition: "bottom-center",
     splitEvery:         1,
     pageOrder:          "",
+    addText:            "Your text here",
+    addTextPosition:    "bottom-center",
+    addTextSize:        14,
+    addTextColor:       "#000000",
+    addTextPages:       "all",
+    stampPosition:      "bottom-right",
+    stampScale:         25,
+    stampOpacity:       0.85,
+    stampPages:         "all",
   });
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [stampFile,       setStampFile]       = useState<File | null>(null);
+  const [isDragOverStamp, setIsDragOverStamp] = useState(false);
+  const fileInputRef  = useRef<HTMLInputElement>(null);
+  const stampInputRef = useRef<HTMLInputElement>(null);
   const progressRef  = useRef<ReturnType<typeof setInterval> | null>(null);
   const urlRef       = useRef("");
 
@@ -284,6 +299,10 @@ function PDFToolWorkspace({ tool, onBack }: { tool: ToolConfig; onBack: () => vo
   const processFiles = async () => {
     if (!files.length) return;
     setError("");
+    if (tool.id === "add-image-stamp" && !stampFile) {
+      setError("Please upload a stamp image (PNG or JPG) before processing.");
+      return;
+    }
     setProcessing(true);
     startProgress();
 
@@ -292,6 +311,9 @@ function PDFToolWorkspace({ tool, onBack }: { tool: ToolConfig; onBack: () => vo
       files.forEach((f) => formData.append("files", f));
       formData.append("tool", tool.id!);
       formData.append("options", JSON.stringify(options));
+      if (tool.id === "add-image-stamp" && stampFile) {
+        formData.append("stamp", stampFile);
+      }
 
       const res = await fetch("/api/pdf", { method: "POST", body: formData });
 
@@ -335,6 +357,7 @@ function PDFToolWorkspace({ tool, onBack }: { tool: ToolConfig; onBack: () => vo
     setFiles([]);
     setError("");
     setStats(null);
+    setStampFile(null);
     if (urlRef.current) { URL.revokeObjectURL(urlRef.current); urlRef.current = ""; setDownloadUrl(""); }
   };
 
@@ -509,6 +532,60 @@ function PDFToolWorkspace({ tool, onBack }: { tool: ToolConfig; onBack: () => vo
             </div>
           )}
 
+          {/* Stamp image upload – add-image-stamp only */}
+          {tool.id === "add-image-stamp" && files.length > 0 && (
+            <div className="mb-5">
+              <p className="text-sm font-semibold text-gray-700 mb-2">
+                Stamp Image <span className="text-red-500">*</span>
+                <span className="text-xs font-normal text-gray-400 ml-2">PNG or JPG</span>
+              </p>
+              {stampFile ? (
+                <div className="bg-white rounded-xl border p-3 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
+                    <Layers size={18} className="text-gray-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-gray-800 truncate">{stampFile.name}</p>
+                    <p className="text-xs text-gray-400">{formatSize(stampFile.size)}</p>
+                  </div>
+                  <button
+                    onClick={() => setStampFile(null)}
+                    className="p-1.5 rounded-md hover:bg-red-100 text-gray-400 hover:text-red-500 transition-all"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              ) : (
+                <div
+                  className={`rounded-xl border-2 border-dashed p-6 text-center cursor-pointer transition-all duration-150 ${
+                    isDragOverStamp ? "border-red-400 bg-red-50" : "border-gray-200 bg-white hover:border-red-300"
+                  }`}
+                  onClick={() => stampInputRef.current?.click()}
+                  onDragOver={(e) => { e.preventDefault(); setIsDragOverStamp(true); }}
+                  onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDragOverStamp(false); }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDragOverStamp(false);
+                    const f = e.dataTransfer.files[0];
+                    if (f && (f.type === "image/png" || f.type.startsWith("image/jpeg"))) setStampFile(f);
+                    else setError("Please drop a PNG or JPG image for the stamp.");
+                  }}
+                >
+                  <input
+                    ref={stampInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg"
+                    onChange={(e) => { if (e.target.files?.[0]) setStampFile(e.target.files[0]); e.target.value = ""; }}
+                    className="hidden"
+                  />
+                  <Layers size={28} className={`mx-auto mb-2 transition-colors ${isDragOverStamp ? "text-red-400" : "text-gray-300"}`} />
+                  <p className="text-sm font-medium text-gray-600">Drop stamp image here</p>
+                  <p className="text-xs text-gray-400 mt-0.5">or <span className="text-red-500">browse files</span></p>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Per-tool options */}
           {files.length > 0 && (
             <div className="bg-white rounded-xl border p-4 mb-5">
@@ -521,7 +598,7 @@ function PDFToolWorkspace({ tool, onBack }: { tool: ToolConfig; onBack: () => vo
           {files.length > 0 && (
             <button
               onClick={processFiles}
-              disabled={processing}
+              disabled={processing || (tool.id === "add-image-stamp" && !stampFile)}
               className="w-full py-3.5 bg-red-600 hover:bg-red-700 disabled:bg-gray-200 disabled:text-gray-400 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 text-sm"
             >
               {processing
@@ -809,6 +886,166 @@ function ToolOptions({
             <span className="font-mono text-gray-600">3, 1, 2</span> puts page 3 first, then 1, then 2.
             Leave blank to reverse the page order.
           </p>
+        </div>
+      );
+
+    case "add-text":
+      return (
+        <div className="space-y-5">
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-1 block">Text to add</label>
+            <input
+              type="text"
+              value={options.addText as string}
+              onChange={(e) => setOptions({ ...options, addText: e.target.value })}
+              placeholder="Your text here"
+              className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-red-200 outline-none"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Font size</label>
+              <select
+                value={options.addTextSize as number}
+                onChange={(e) => setOptions({ ...options, addTextSize: Number(e.target.value) })}
+                className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-red-200 outline-none bg-white"
+              >
+                {[8, 10, 12, 14, 18, 24, 36, 48].map((s) => (
+                  <option key={s} value={s}>{s}pt</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Target pages</label>
+              <input
+                type="text"
+                value={options.addTextPages as string}
+                onChange={(e) => setOptions({ ...options, addTextPages: e.target.value })}
+                placeholder="all  or  1-3, 5"
+                className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-red-200 outline-none"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-2 block">Color</label>
+            <div className="flex gap-2 flex-wrap">
+              {[
+                { label: "Black",  value: "#000000", bg: "bg-gray-900"   },
+                { label: "Gray",   value: "#555555", bg: "bg-gray-500"   },
+                { label: "Red",    value: "#dc2626", bg: "bg-red-600"    },
+                { label: "Blue",   value: "#2563eb", bg: "bg-blue-600"   },
+                { label: "Green",  value: "#16a34a", bg: "bg-green-600"  },
+                { label: "Orange", value: "#ea580c", bg: "bg-orange-600" },
+              ].map(({ label, value, bg }) => (
+                <button
+                  key={value}
+                  onClick={() => setOptions({ ...options, addTextColor: value })}
+                  title={label}
+                  className={`w-7 h-7 rounded-full ${bg} border-2 transition-all ${
+                    options.addTextColor === value ? "border-gray-700 scale-110" : "border-transparent"
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-2 block">Position on page</label>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { value: "top-left",      label: "↖ Top Left"   },
+                { value: "top-center",    label: "↑ Top Center" },
+                { value: "top-right",     label: "Top Right ↗"  },
+                { value: "bottom-left",   label: "↙ Bot Left"   },
+                { value: "bottom-center", label: "↓ Bot Center" },
+                { value: "bottom-right",  label: "Bot Right ↘"  },
+              ].map(({ value, label }) => (
+                <button
+                  key={value}
+                  onClick={() => setOptions({ ...options, addTextPosition: value })}
+                  className={`py-2 rounded-xl border text-xs font-medium transition-all ${
+                    options.addTextPosition === value
+                      ? "border-red-500 bg-red-50 text-red-700"
+                      : "border-gray-200 text-gray-500 hover:border-gray-300"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+
+    case "add-image-stamp":
+      return (
+        <div className="space-y-5">
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-2 block">
+              Stamp size — <span className="text-red-600 font-semibold">{options.stampScale as number}%</span>
+              <span className="text-xs font-normal text-gray-400 ml-1">of page width</span>
+            </label>
+            <input
+              type="range"
+              min="5"
+              max="60"
+              step="5"
+              value={options.stampScale as number}
+              onChange={(e) => setOptions({ ...options, stampScale: Number(e.target.value) })}
+              className="w-full accent-red-500"
+            />
+            <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
+              <span>Small (5%)</span><span>Large (60%)</span>
+            </div>
+          </div>
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-2 block">
+              Opacity — <span className="text-red-600 font-semibold">{Math.round((options.stampOpacity as number) * 100)}%</span>
+            </label>
+            <input
+              type="range"
+              min="10"
+              max="100"
+              step="5"
+              value={Math.round((options.stampOpacity as number) * 100)}
+              onChange={(e) => setOptions({ ...options, stampOpacity: Number(e.target.value) / 100 })}
+              className="w-full accent-red-500"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-1 block">Target pages</label>
+            <input
+              type="text"
+              value={options.stampPages as string}
+              onChange={(e) => setOptions({ ...options, stampPages: e.target.value })}
+              placeholder="all  or  1-3, 5"
+              className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-red-200 outline-none"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-2 block">Position on page</label>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { value: "top-left",      label: "↖ Top Left"   },
+                { value: "top-center",    label: "↑ Top Center" },
+                { value: "top-right",     label: "Top Right ↗"  },
+                { value: "bottom-left",   label: "↙ Bot Left"   },
+                { value: "center",        label: "⊕ Center"     },
+                { value: "bottom-right",  label: "Bot Right ↘"  },
+              ].map(({ value, label }) => (
+                <button
+                  key={value}
+                  onClick={() => setOptions({ ...options, stampPosition: value })}
+                  className={`py-2 rounded-xl border text-xs font-medium transition-all ${
+                    options.stampPosition === value
+                      ? "border-red-500 bg-red-50 text-red-700"
+                      : "border-gray-200 text-gray-500 hover:border-gray-300"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       );
 
