@@ -216,7 +216,7 @@ function PDFToolWorkspace({ tool, onBack }: { tool: ToolConfig; onBack: () => vo
   const [isDragOver, setIsDragOver] = useState(false);
   const [downloadUrl,setDownloadUrl]= useState("");
   const [stats,      setStats]      = useState<{ before: number; after: number } | null>(null);
-  const [options,    setOptions]    = useState({
+  const [options,    setOptions]    = useState<Record<string, unknown>>({
     password:           "",
     watermarkText:      "CONFIDENTIAL",
     watermarkOpacity:   0.3,
