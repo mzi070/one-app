@@ -272,16 +272,14 @@ async function protectPDF(file: File, label: string): Promise<Uint8Array> {
   return pdf.save();
 }
 
-async function unlockPDF(file: File, password: string): Promise<Uint8Array> {
+async function unlockPDF(file: File, _password: string): Promise<Uint8Array> {
   const bytes = await file.arrayBuffer();
   try {
-    // Try loading with password if provided
-    const pdf = await PDFDocument.load(bytes, password ? { password } : {});
-    // Re-save without the protection context (pdf-lib removes owner-level restrictions on save)
+    // pdf-lib does not support password-based decryption; load ignoring encryption
+    const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true });
     return pdf.save();
   } catch {
-    // If the password is wrong or the file isn't encrypted, return as-is
-    const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true });
+    const pdf = await PDFDocument.load(bytes);
     return pdf.save();
   }
 }
