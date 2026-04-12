@@ -239,6 +239,17 @@ export interface CartItem {
   price: number;
   quantity: number;
   discount: number;
+  notes?: string;
+}
+
+// Held Order
+export interface HeldOrder {
+  id: string;
+  timestamp: string;
+  items: CartItem[];
+  customerName: string;
+  subtotal: number;
+  total: number;
 }
 
 interface POSState {
@@ -247,10 +258,12 @@ interface POSState {
   selectedCategory: string;
   paymentMethod: string;
   customerName: string;
+  heldOrders: HeldOrder[];
   addToCart: (item: Omit<CartItem, "id" | "quantity" | "discount">) => void;
   removeFromCart: (id: string) => void;
   updateQuantity: (id: string, quantity: number) => void;
   updateDiscount: (id: string, discount: number) => void;
+  updateNotes: (id: string, notes: string) => void;
   clearCart: () => void;
   setSearchQuery: (query: string) => void;
   setSelectedCategory: (category: string) => void;
@@ -258,6 +271,9 @@ interface POSState {
   setCustomerName: (name: string) => void;
   getSubtotal: () => number;
   getTotal: () => number;
+  holdOrder: () => void;
+  recallOrder: (id: string) => void;
+  deleteHeldOrder: (id: string) => void;
 }
 
 export const usePOSStore = create<POSState>((set, get) => ({
@@ -266,6 +282,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
   selectedCategory: "all",
   paymentMethod: "cash",
   customerName: "",
+  heldOrders: [],
   addToCart: (item) =>
     set((state) => {
       const existing = state.cart.find((c) => c.productId === item.productId);
@@ -281,7 +298,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
       return {
         cart: [
           ...state.cart,
-          { ...item, id: crypto.randomUUID(), quantity: 1, discount: 0 },
+          { ...item, id: crypto.randomUUID(), quantity: 1, discount: 0, notes: "" },
         ],
       };
     }),
@@ -294,6 +311,10 @@ export const usePOSStore = create<POSState>((set, get) => ({
   updateDiscount: (id, discount) =>
     set((state) => ({
       cart: state.cart.map((c) => (c.id === id ? { ...c, discount } : c)),
+    })),
+  updateNotes: (id, notes) =>
+    set((state) => ({
+      cart: state.cart.map((c) => (c.id === id ? { ...c, notes } : c)),
     })),
   clearCart: () => set({ cart: [], customerName: "" }),
   setSearchQuery: (query) => set({ searchQuery: query }),
@@ -308,6 +329,39 @@ export const usePOSStore = create<POSState>((set, get) => ({
         sum + item.price * item.quantity - item.discount * item.quantity,
       0
     ),
+  holdOrder: () =>
+    set((state) => {
+      if (state.cart.length === 0) return state;
+      const subtotal = get().getSubtotal();
+      const total = get().getTotal();
+      const newOrder: HeldOrder = {
+        id: `hold-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        items: [...state.cart],
+        customerName: state.customerName,
+        subtotal,
+        total,
+      };
+      return {
+        cart: [],
+        customerName: "",
+        heldOrders: [newOrder, ...state.heldOrders].slice(0, 10),
+      };
+    }),
+  recallOrder: (id) =>
+    set((state) => {
+      const order = state.heldOrders.find((o) => o.id === id);
+      if (!order) return state;
+      return {
+        cart: order.items,
+        customerName: order.customerName,
+        heldOrders: state.heldOrders.filter((o) => o.id !== id),
+      };
+    }),
+  deleteHeldOrder: (id) =>
+    set((state) => ({
+      heldOrders: state.heldOrders.filter((o) => o.id !== id),
+    })),
 }));
 
 // ─── Settings Store ───────────────────────────────────────────────────────────

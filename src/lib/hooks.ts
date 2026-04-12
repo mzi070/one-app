@@ -2,6 +2,66 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 
+// ─── useBarcodeScanner ────────────────────────────────────────────────────────────────
+export function useBarcodeScanner(
+  onScan: (barcode: string) => void,
+  options: { enabled?: boolean; timeout?: number } = {}
+) {
+  const { enabled = true, timeout = 100 } = options;
+  const buffer = useRef<string>("");
+  const lastKeyTime = useRef<number>(0);
+
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      if (!enabled) return;
+
+      const now = Date.now();
+      if (now - lastKeyTime.current > timeout) {
+        buffer.current = "";
+      }
+      lastKeyTime.current = now;
+
+      if (event.key === "Enter") {
+        if (buffer.current.length > 0) {
+          onScan(buffer.current);
+          buffer.current = "";
+        }
+        return;
+      }
+
+      if (event.key.length === 1) {
+        buffer.current += event.key;
+      }
+    },
+    [enabled, timeout, onScan]
+  );
+
+  useEffect(() => {
+    if (!enabled) return;
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [enabled, handleKeyDown]);
+
+  return { buffer: buffer.current };
+}
+
+export function useBarcodeInput(initialValue = "") {
+  const [value, setValue] = useState(initialValue);
+  const [isScanning, setIsScanning] = useState(false);
+
+  const handleChange = useCallback((newValue: string) => {
+    setValue(newValue);
+    setIsScanning(newValue.length > 20);
+  }, []);
+
+  const clear = useCallback(() => {
+    setValue("");
+    setIsScanning(false);
+  }, []);
+
+  return { value, setValue: handleChange, clear, isScanning };
+}
+
 // ─── useDebounce ────────────────────────────────────────────────────────────────────────────────
 export function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
