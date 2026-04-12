@@ -237,7 +237,7 @@ export default function ProfileModule() {
                       <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
                       <input
                         type="text"
-                        value={(draft as Record<string, string>)[k] ?? ""}
+                        value={(draft as unknown as Record<string, string>)[k] ?? ""}
                         onChange={(e) => upd(k, e.target.value)}
                         placeholder={placeholder}
                         className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
