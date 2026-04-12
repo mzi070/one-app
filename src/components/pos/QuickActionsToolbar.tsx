@@ -17,8 +17,8 @@ import {
   Check,
   AlertCircle,
 } from "lucide-react";
-import { usePOSStore, useSettingsStore, notify, formatCurrency } from "@/store";
-import { cn } from "@/lib/utils";
+import { usePOSStore, useSettingsStore, notify } from "@/store";
+import { cn, formatCurrency } from "@/lib/utils";
 import { POS_CATEGORIES, QUICK_AMOUNTS } from "@/lib/pos";
 
 interface QuickActionsProps {

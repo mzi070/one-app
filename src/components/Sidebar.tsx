@@ -14,16 +14,17 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const modules: { id: AppModule; label: string; icon: React.ElementType; color: string }[] = [
-  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, color: "text-blue-500" },
-  { id: "pos", label: "Point of Sale", icon: ShoppingCart, color: "text-green-500" },
-  { id: "hr", label: "HR Management", icon: Users, color: "text-purple-500" },
-  { id: "accounting", label: "Accounting", icon: Calculator, color: "text-orange-500" },
-  { id: "pdf", label: "PDF Tools", icon: FileText, color: "text-red-500" },
+const modules: { id: AppModule; label: string; icon: React.ElementType; color: string; gradient: string }[] = [
+  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, color: "text-blue-400", gradient: "from-blue-500/20 to-blue-600/10" },
+  { id: "pos", label: "Point of Sale", icon: ShoppingCart, color: "text-emerald-400", gradient: "from-emerald-500/20 to-emerald-600/10" },
+  { id: "hr", label: "HR Management", icon: Users, color: "text-violet-400", gradient: "from-violet-500/20 to-violet-600/10" },
+  { id: "accounting", label: "Accounting", icon: Calculator, color: "text-amber-400", gradient: "from-amber-500/20 to-amber-600/10" },
+  { id: "pdf", label: "PDF Tools", icon: FileText, color: "text-rose-400", gradient: "from-rose-500/20 to-rose-600/10" },
 ];
 
-const bottomModules: { id: AppModule; label: string; icon: React.ElementType; color: string }[] = [
-  { id: "settings", label: "Settings", icon: Settings, color: "text-gray-400" },
+const bottomModules: { id: AppModule; label: string; icon: React.ElementType; color: string; gradient: string }[] = [
+  { id: "settings", label: "Settings", icon: Settings, color: "text-gray-400", gradient: "" },
+  { id: "profile", label: "Profile", icon: Settings, color: "text-pink-400", gradient: "from-pink-500/20 to-pink-600/10" },
 ];
 
 export default function Sidebar() {
@@ -71,16 +72,19 @@ export default function Sidebar() {
                 key={mod.id}
                 onClick={() => setModule(mod.id)}
                 className={cn(
-                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group",
+                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group relative",
                   isActive
-                    ? "bg-gray-700/80 text-white"
+                    ? `bg-gradient-to-r ${mod.gradient} ${mod.color} font-semibold`
                     : "text-gray-400 hover:bg-gray-800 hover:text-white"
                 )}
                 title={!sidebarOpen ? mod.label : undefined}
               >
+                {isActive && (
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-current rounded-r-full" />
+                )}
                 <Icon
                   size={20}
-                  className={cn(isActive ? mod.color : "text-gray-400 group-hover:text-gray-300")}
+                  className={cn(isActive ? "text-inherit" : "text-gray-400 group-hover:text-gray-300")}
                 />
                 {sidebarOpen && (
                   <>
@@ -105,9 +109,9 @@ export default function Sidebar() {
                 key={mod.id}
                 onClick={() => setModule(mod.id)}
                 className={cn(
-                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group",
+                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group relative",
                   isActive
-                    ? "bg-gray-700/80 text-white"
+                    ? `bg-gradient-to-r ${mod.gradient || "bg-gray-700/80"} ${mod.color} font-semibold`
                     : "text-gray-400 hover:bg-gray-800 hover:text-white"
                 )}
                 title={!sidebarOpen ? mod.label : undefined}

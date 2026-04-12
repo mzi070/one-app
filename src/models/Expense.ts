@@ -14,8 +14,8 @@ const ExpenseSchema = new Schema(
     timestamps: true,
     toJSON: {
       virtuals: true,
-      transform: (_, ret) => {
-        ret.id = ret._id.toString();
+      transform: (_, ret: Record<string, unknown>) => {
+        ret.id = (ret._id as { toString(): string }).toString();
         delete ret._id;
         delete ret.__v;
         return ret;

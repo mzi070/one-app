@@ -53,7 +53,7 @@ export interface POSSaleItem {
   discount: number;
 }
 
-export type POSPaymentMethod = "cash" | "card" | " mobile" | "split" | "credit";
+export type POSPaymentMethod = "cash" | "card" | "mobile" | "split" | "credit";
 export type POSSaleStatus = "completed" | "refunded" | "voided" | "hold";
 export type POSSaleView = "sale" | "products" | "customers" | "reports" | "hold";
 

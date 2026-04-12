@@ -19,8 +19,8 @@ const EmployeeSchema = new Schema(
     timestamps: true,
     toJSON: {
       virtuals: true,
-      transform: (_, ret) => {
-        ret.id = ret._id.toString();
+      transform: (_, ret: Record<string, unknown>) => {
+        ret.id = (ret._id as { toString(): string }).toString();
         // Wrap department string so API response matches Prisma shape: { department: { name } }
         ret.department = ret.department ? { name: ret.department } : null;
         delete ret._id;
