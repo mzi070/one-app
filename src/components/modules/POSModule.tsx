@@ -659,7 +659,31 @@ export default function POSModule() {
       )}
 
       {/* Add Product Modal */}
-      {showAddProduct && <AddProductModal onClose={() => setShowAddProduct(false)} onAdded={loadProducts} />}
+      {showAddProduct && (
+        <ProductFormModal
+          product={null}
+          onClose={() => setShowAddProduct(false)}
+          onSave={(data) => {
+            const payload = {
+              name: data.name.trim(),
+              sku: data.sku.trim(),
+              price: parseFloat(data.price),
+              cost: parseFloat(data.cost || "0"),
+              quantity: parseInt(data.quantity),
+              category: data.category,
+              description: data.description.trim() || null,
+            };
+            fetch("/api/products", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            }).then(() => {
+              loadProducts();
+              setShowAddProduct(false);
+            });
+          }}
+        />
+      )}
 
       {/* New Customer from Sale View */}
       {showNewCustomerModal && (

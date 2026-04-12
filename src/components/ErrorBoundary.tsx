@@ -4,6 +4,7 @@ import { Component, ReactNode } from "react";
 import { AlertTriangle, RefreshCw, Home } from "lucide-react";
 import { useAppStore } from "@/store";
 import { cn } from "@/lib/utils";
+import { Skeleton } from "./Skeleton";
 
 interface Props {
   children: ReactNode;
