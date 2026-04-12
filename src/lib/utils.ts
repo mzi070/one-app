@@ -88,8 +88,8 @@ export function generateId(prefix: string): string {
   return `${prefix}-${timestamp}-${random}`;
 }
 
-export function generateInvoiceNumber = () => generateId("INV");
-export function generateEmployeeId = () => generateId("EMP");
+export function generateInvoiceNumber(): string { return generateId("INV"); }
+export function generateEmployeeId(): string { return generateId("EMP"); }
 
 // ─── Validation ──────────────────────────────────────────────────────────────
 export function isValidEmail(email: string): boolean {
