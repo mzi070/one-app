@@ -36,10 +36,26 @@ import {
   BookOpen,
   ChevronDown,
   ChevronUp,
+  RefreshCw,
+  Clock,
+  Calendar,
+  ArrowLeftRight,
+  Banknote,
+  Receipt as ReceiptIcon,
+  Building2,
+  Users,
+  Briefcase,
+  FilePlus,
+  FileCheck,
+  FileX,
+  FileText as FileTextIcon,
+  Power,
 } from "lucide-react";
-import { formatCurrency, generateInvoiceNumber } from "@/lib/utils";
+import { formatCurrency, generateInvoiceNumber, formatDate, formatRelativeTime } from "@/lib/utils";
+import { getInvoiceStatusInfo, getExpenseStatusInfo, getDefaultAccounts, calculateProfitLoss, generateBalanceSheet, generateProfitLoss } from "@/lib/accounting";
+import { AccStatCard, InvoiceStatusBadge, ExpenseStatusBadge, AccSearchFilterBar, AccCurrencyInput, AccDataTable } from "@/components/accounting/AccountingComponents";
 
-type AccView = "overview" | "invoices" | "expenses" | "accounts" | "journal" | "reports";
+type AccView = "overview" | "invoices" | "expenses" | "accounts" | "journal" | "reports" | "budget" | "assets";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Invoice {
@@ -143,6 +159,29 @@ function mapJournalEntry(raw: any): JournalEntry {
     posted: raw.posted,
   };
 }
+
+const SEED_ACCOUNTS: Account[] = [
+  { code: "1100", name: "Cash & Bank", type: "Asset", balance: 0, description: "Cash on hand and bank accounts", isActive: true },
+  { code: "1200", name: "Accounts Receivable", type: "Asset", balance: 0, description: "Amounts owed by customers", isActive: true },
+  { code: "1300", name: "Inventory", type: "Asset", balance: 0, description: "Goods held for resale", isActive: true },
+  { code: "1400", name: "Prepaid Expenses", type: "Asset", balance: 0, description: "Expenses paid in advance", isActive: true },
+  { code: "1500", name: "Fixed Assets", type: "Asset", balance: 0, description: "Property, plant & equipment", isActive: true },
+  { code: "2100", name: "Accounts Payable", type: "Liability", balance: 0, description: "Amounts owed to suppliers", isActive: true },
+  { code: "2200", name: "Accrued Liabilities", type: "Liability", balance: 0, description: "Expenses incurred but not yet paid", isActive: true },
+  { code: "2300", name: "Short-term Loans", type: "Liability", balance: 0, description: "Loans due within one year", isActive: true },
+  { code: "2400", name: "Long-term Debt", type: "Liability", balance: 0, description: "Loans due after one year", isActive: true },
+  { code: "3100", name: "Owner's Capital", type: "Equity", balance: 0, description: "Owner investment in the business", isActive: true },
+  { code: "3200", name: "Retained Earnings", type: "Equity", balance: 0, description: "Accumulated profits retained in the business", isActive: true },
+  { code: "4100", name: "Sales Revenue", type: "Revenue", balance: 0, description: "Revenue from sales of goods or services", isActive: true },
+  { code: "4200", name: "Service Revenue", type: "Revenue", balance: 0, description: "Revenue from services rendered", isActive: true },
+  { code: "4300", name: "Other Income", type: "Revenue", balance: 0, description: "Miscellaneous income", isActive: true },
+  { code: "5100", name: "Cost of Goods Sold", type: "Expense", balance: 0, description: "Direct cost of goods sold", isActive: true },
+  { code: "5200", name: "Salaries & Wages", type: "Expense", balance: 0, description: "Employee salaries and wages", isActive: true },
+  { code: "5300", name: "Rent Expense", type: "Expense", balance: 0, description: "Office and facility rent", isActive: true },
+  { code: "5400", name: "Utilities", type: "Expense", balance: 0, description: "Electricity, water, internet", isActive: true },
+  { code: "5500", name: "Marketing & Advertising", type: "Expense", balance: 0, description: "Promotion and advertising costs", isActive: true },
+  { code: "5600", name: "General & Administrative", type: "Expense", balance: 0, description: "General operating expenses", isActive: true },
+];
 
 // ── Root Component ────────────────────────────────────────────────────────────
 export default function AccountingModule() {
@@ -348,6 +387,45 @@ export default function AccountingModule() {
     if (acc) notify({ title: "Account Removed", message: `${acc.name} (${acc.code}) removed from chart of accounts.`, category: "accounting", priority: "info", actionLabel: "View Accounts", actionModule: "accounting" });
   };
 
+  const handleToggleAccountActive = async (code: string) => {
+    const acc = accounts.find((a) => a.code === code);
+    if (!acc) return;
+    const newActive = acc.isActive === false;
+    setAccounts((prev) => prev.map((a) => a.code === code ? { ...a, isActive: newActive } : a));
+    await fetch(`/api/accounts/${code}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ isActive: newActive }) });
+    notify({ title: newActive ? "Account Activated" : "Account Deactivated", message: `${acc.name} (${acc.code}) is now ${newActive ? "active" : "inactive"}.`, category: "accounting", priority: "info", actionLabel: "View Accounts", actionModule: "accounting" });
+  };
+
+  const handleAdjustBalance = async (code: string, newBalance: number, memo: string) => {
+    const acc = accounts.find((a) => a.code === code);
+    if (!acc) return;
+    const diff = parseFloat((newBalance - acc.balance).toFixed(2));
+    if (Math.abs(diff) < 0.01) return;
+    setAccounts((prev) => prev.map((a) => a.code === code ? { ...a, balance: newBalance } : a));
+    await fetch(`/api/accounts/${code}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ balance: newBalance }) });
+    const je: JournalEntry = {
+      id: crypto.randomUUID(),
+      date: new Date().toISOString().slice(0, 10),
+      description: memo || `Balance adjustment — ${acc.name}`,
+      reference: `ADJ-${acc.code}`,
+      debit: diff > 0 ? acc.name : "Retained Earnings",
+      credit: diff > 0 ? "Retained Earnings" : acc.name,
+      amount: Math.abs(diff),
+      posted: true,
+    };
+    setJournalEntries((prev) => [je, ...prev]);
+    await fetch("/api/journal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(je) });
+    notify({ title: "Balance Adjusted", message: `${acc.name} adjusted by ${diff >= 0 ? "+" : ""}${formatCurrency(diff)} → ${formatCurrency(newBalance)}.`, category: "accounting", priority: "success", actionLabel: "View Accounts", actionModule: "accounting" });
+  };
+
+  const handleSeedAccounts = async () => {
+    const toAdd = SEED_ACCOUNTS.filter((s) => !accounts.some((a) => a.code === s.code));
+    if (toAdd.length === 0) return;
+    setAccounts((prev) => [...prev, ...toAdd].sort((a, b) => a.code.localeCompare(b.code)));
+    await Promise.all(toAdd.map((acc) => fetch("/api/accounts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(acc) })));
+    notify({ title: "Chart Seeded", message: `${toAdd.length} standard accounts added.`, category: "accounting", priority: "success", actionLabel: "View Accounts", actionModule: "accounting" });
+  };
+
   const handleJournalAdded = async (je: JournalEntry) => {
     setJournalEntries((prev) => [je, ...prev]);
     try {
@@ -486,6 +564,8 @@ export default function AccountingModule() {
             onEdit={(acc) => setShowEditAccount(acc)}
             onView={(acc) => setShowViewAccount(acc)}
             onDelete={handleDeleteAccount}
+            onToggleActive={handleToggleAccountActive}
+            onSeedAccounts={handleSeedAccounts}
           />}
         {view === "journal" && <JournalView entries={journalEntries} accounts={accounts} onAddEntry={() => setShowAddJournal(true)} onView={(je) => setShowViewJournal(je)} onDelete={handleDeleteJournal} onTogglePost={handleTogglePostJournal} />}
         {view === "reports" && <ReportsView invoices={invoices} expenses={expenses} accounts={accounts} journalEntries={journalEntries} monthlyData={monthlyData} />}
@@ -500,7 +580,7 @@ export default function AccountingModule() {
       {showViewExpense && <ExpenseDetailModal expense={showViewExpense} onClose={() => setShowViewExpense(null)} onApprove={() => { handleApproveExpense(showViewExpense.id); setShowViewExpense(null); }} onReject={() => { handleRejectExpense(showViewExpense.id); setShowViewExpense(null); }} onEdit={(exp) => { setShowViewExpense(null); setShowEditExpense(exp); }} onDelete={(id) => { handleDeleteExpense(id); setShowViewExpense(null); }} onResubmit={() => { handleResubmitExpense(showViewExpense.id); setShowViewExpense(null); }} />}
       {showAddAccount && <AccountFormModal account={null} onClose={() => setShowAddAccount(false)} onSave={handleAccountAdded} existing={accounts} />}
       {showEditAccount && <AccountFormModal account={showEditAccount} onClose={() => setShowEditAccount(null)} onSave={(acc) => { handleEditAccount(acc); setShowEditAccount(null); }} existing={accounts} />}
-      {showViewAccount && <AccountDetailModal account={showViewAccount} onClose={() => setShowViewAccount(null)} onEdit={(acc) => { setShowViewAccount(null); setShowEditAccount(acc); }} onDelete={(code) => { handleDeleteAccount(code); setShowViewAccount(null); }} />}
+      {showViewAccount && <AccountDetailModal account={showViewAccount} onClose={() => setShowViewAccount(null)} onEdit={(acc) => { setShowViewAccount(null); setShowEditAccount(acc); }} onDelete={(code) => { handleDeleteAccount(code); setShowViewAccount(null); }} journalEntries={journalEntries} onAdjustBalance={handleAdjustBalance} onToggleActive={(code) => { handleToggleAccountActive(code); setShowViewAccount((prev) => prev ? { ...prev, isActive: !(prev.isActive !== false) } : null); }} />}
       {showAddJournal && <JournalEntryFormModal entry={null} onClose={() => setShowAddJournal(false)} onSave={handleJournalAdded} accounts={accounts} />}
       {showEditJournal && <JournalEntryFormModal entry={showEditJournal} onClose={() => setShowEditJournal(null)} onSave={(je) => { handleEditJournal(je); setShowEditJournal(null); }} accounts={accounts} />}
       {showViewJournal && <JournalEntryDetailModal entry={showViewJournal} onClose={() => setShowViewJournal(null)} onEdit={(je) => { setShowViewJournal(null); setShowEditJournal(je); }} onDelete={(id) => { handleDeleteJournal(id); setShowViewJournal(null); }} onTogglePost={(id) => { handleTogglePostJournal(id); setShowViewJournal((prev) => prev ? { ...prev, posted: !prev.posted } : null); }} />}
@@ -1286,12 +1366,14 @@ function ExpensesView({ expenses, onAddNew, onApprove, onReject, onDelete, onEdi
 }
 
 // ── Chart of Accounts ─────────────────────────────────────────────────────────
-function ChartOfAccountsView({ accounts, onAddNew, onEdit, onView, onDelete }: {
+function ChartOfAccountsView({ accounts, onAddNew, onEdit, onView, onDelete, onToggleActive, onSeedAccounts }: {
   accounts: Account[];
   onAddNew: () => void;
   onEdit: (acc: Account) => void;
   onView: (acc: Account) => void;
   onDelete: (code: string) => void;
+  onToggleActive: (code: string) => void;
+  onSeedAccounts: () => void;
 }) {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -1431,6 +1513,9 @@ function ChartOfAccountsView({ accounts, onAddNew, onEdit, onView, onDelete }: {
           <button onClick={exportCsv} title="Export CSV" className="px-3 py-1.5 border rounded-lg text-xs text-gray-600 hover:bg-gray-50 flex items-center gap-1.5">
             <Download size={13} /> Export
           </button>
+          <button onClick={onSeedAccounts} className="px-3 py-1.5 border rounded-lg text-xs text-gray-600 hover:bg-gray-50 flex items-center gap-1.5 whitespace-nowrap" title="Load standard chart of accounts template">
+            <BookOpen size={13} /> Template
+          </button>
           <button onClick={onAddNew} className="px-3 py-1.5 bg-orange-600 text-white rounded-lg hover:bg-orange-700 flex items-center gap-1.5 text-sm whitespace-nowrap">
             <Plus size={15} /> Add Account
           </button>
@@ -1439,7 +1524,23 @@ function ChartOfAccountsView({ accounts, onAddNew, onEdit, onView, onDelete }: {
 
       {/* Grouped Tables */}
       {filtered.length === 0 && (
-        <div className="bg-white rounded-xl border py-16 text-center text-gray-400">No accounts match your search</div>
+        <div className="bg-white rounded-xl border py-16 text-center space-y-3">
+          {accounts.length === 0 ? (
+            <>
+              <Building size={32} className="mx-auto text-gray-300" />
+              <p className="text-gray-500 font-medium">No accounts set up yet</p>
+              <p className="text-sm text-gray-400">Start from a standard template or add accounts manually</p>
+              <div className="flex items-center justify-center gap-3 pt-2">
+                <button onClick={onSeedAccounts} className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 text-sm font-medium flex items-center gap-2">
+                  <BookOpen size={15} /> Load Standard Template
+                </button>
+                <button onClick={onAddNew} className="px-4 py-2 border rounded-lg text-sm text-gray-600 hover:bg-gray-50">Add Manually</button>
+              </div>
+            </>
+          ) : (
+            <p className="text-gray-400">No accounts match your search</p>
+          )}
+        </div>
       )}
       <div className="space-y-3">
         {activeTypes.map((type) => {
@@ -1499,6 +1600,7 @@ function ChartOfAccountsView({ accounts, onAddNew, onEdit, onView, onDelete }: {
                               <div className="flex justify-center gap-1">
                                 <button onClick={() => onView(acc)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700" title="View"><Eye size={13} /></button>
                                 <button onClick={() => onEdit(acc)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-blue-600" title="Edit"><Edit3 size={13} /></button>
+                                <button onClick={() => onToggleActive(acc.code)} className={`p-1.5 rounded ${acc.isActive === false ? "text-green-400 hover:bg-green-50 hover:text-green-600" : "text-orange-300 hover:bg-orange-50 hover:text-orange-600"}`} title={acc.isActive === false ? "Activate account" : "Deactivate account"}><Power size={13} /></button>
                                 <button
                                   onClick={() => { if (confirm(`Remove account "${acc.name}" (${acc.code})? This cannot be undone.`)) onDelete(acc.code); }}
                                   className="p-1.5 rounded hover:bg-red-50 text-gray-300 hover:text-red-500"
@@ -1539,9 +1641,9 @@ function JournalView({ entries, onAddEntry, onView, onDelete, onTogglePost, acco
   onTogglePost: (id: string) => void;
   accounts: Account[];
 }) {
-  void accounts;
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "posted" | "pending">("all");
+  const [accountFilter, setAccountFilter] = useState("");
   const [sortBy, setSortBy] = useState<"date-desc" | "date-asc" | "amount-desc" | "amount-asc">("date-desc");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -1552,6 +1654,7 @@ function JournalView({ entries, onAddEntry, onView, onDelete, onTogglePost, acco
     if (statusFilter === "pending") list = list.filter((e) => !e.posted);
     if (dateFrom) list = list.filter((e) => e.date >= dateFrom);
     if (dateTo) list = list.filter((e) => e.date <= dateTo);
+    if (accountFilter) list = list.filter((e) => e.debit === accountFilter || e.credit === accountFilter);
     const q = search.toLowerCase();
     if (q) list = list.filter((e) =>
       e.description.toLowerCase().includes(q) ||
@@ -1567,7 +1670,7 @@ function JournalView({ entries, onAddEntry, onView, onDelete, onTogglePost, acco
       return a.amount - b.amount;
     });
     return list;
-  }, [entries, statusFilter, dateFrom, dateTo, search, sortBy]);
+  }, [entries, statusFilter, dateFrom, dateTo, accountFilter, search, sortBy]);
 
   const postedEntries = entries.filter((e) => e.posted);
   const pendingEntries = entries.filter((e) => !e.posted);
@@ -1645,6 +1748,12 @@ function JournalView({ entries, onAddEntry, onView, onDelete, onTogglePost, acco
           <option value="date-asc">Date (Oldest)</option>
           <option value="amount-desc">Amount (High→Low)</option>
           <option value="amount-asc">Amount (Low→High)</option>
+        </select>
+        <select value={accountFilter} onChange={(e) => setAccountFilter(e.target.value)} className="px-2 py-1.5 border rounded-lg text-xs focus:ring-2 focus:ring-orange-400 outline-none max-w-[180px]" title="Filter by account">
+          <option value="">All Accounts</option>
+          {accounts.filter((a) => a.isActive !== false).sort((a, b) => a.code.localeCompare(b.code)).map((a) => (
+            <option key={a.code} value={a.name}>{a.code} · {a.name}</option>
+          ))}
         </select>
         <div className="relative">
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -2580,12 +2689,20 @@ function ExpenseFormModal({ expense, onClose, onSave }: {
 }
 
 
-function AccountDetailModal({ account: acc, onClose, onEdit, onDelete }: {
+function AccountDetailModal({ account: acc, onClose, onEdit, onDelete, journalEntries, onAdjustBalance, onToggleActive }: {
   account: Account;
   onClose: () => void;
   onEdit: (acc: Account) => void;
   onDelete: (code: string) => void;
+  journalEntries: JournalEntry[];
+  onAdjustBalance: (code: string, newBalance: number, memo: string) => void;
+  onToggleActive: (code: string) => void;
 }) {
+  const [tab, setTab] = useState<"details" | "ledger">("details");
+  const [showAdjust, setShowAdjust] = useState(false);
+  const [adjustBalance, setAdjustBalance] = useState(acc.balance.toFixed(2));
+  const [adjustMemo, setAdjustMemo] = useState("");
+
   const typeColors: Record<string, string> = {
     Asset: "bg-blue-50 text-blue-700 border-blue-200",
     Liability: "bg-red-50 text-red-700 border-red-200",
@@ -2593,9 +2710,26 @@ function AccountDetailModal({ account: acc, onClose, onEdit, onDelete }: {
     Revenue: "bg-green-50 text-green-700 border-green-200",
     Expense: "bg-orange-50 text-orange-700 border-orange-200",
   };
+
+  const ledgerEntries = journalEntries
+    .filter((je) => je.debit === acc.name || je.credit === acc.name)
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  const totalDebits = ledgerEntries.filter((je) => je.debit === acc.name).reduce((s, je) => s + je.amount, 0);
+  const totalCredits = ledgerEntries.filter((je) => je.credit === acc.name).reduce((s, je) => s + je.amount, 0);
+
+  const handleAdjustSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const newBal = parseFloat(adjustBalance);
+    if (isNaN(newBal)) return;
+    onAdjustBalance(acc.code, newBal, adjustMemo);
+    setShowAdjust(false);
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
         <div className="flex items-start justify-between p-5 border-b">
           <div>
             <p className="font-mono text-xs text-gray-400 mb-0.5">{acc.code}</p>
@@ -2606,40 +2740,180 @@ function AccountDetailModal({ account: acc, onClose, onEdit, onDelete }: {
             <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 ml-1"><X size={18} /></button>
           </div>
         </div>
-        <div className="p-5 space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-gray-50 rounded-xl p-3">
-              <p className="text-xs text-gray-400 mb-1">Type</p>
-              <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border ${typeColors[acc.type]}`}>{acc.type}</span>
-            </div>
-            <div className="bg-gray-50 rounded-xl p-3">
-              <p className="text-xs text-gray-400 mb-1">Status</p>
-              <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${acc.isActive === false ? "bg-gray-100 text-gray-500" : "bg-green-100 text-green-700"}`}>
-                {acc.isActive === false ? "Inactive" : "Active"}
-              </span>
-            </div>
-            <div className="col-span-2 bg-gray-50 rounded-xl p-3">
-              <p className="text-xs text-gray-400 mb-1">Current Balance</p>
-              <p className={`text-2xl font-bold ${acc.balance < 0 ? "text-red-600" : "text-gray-900"}`}>{formatCurrency(acc.balance)}</p>
-            </div>
-          </div>
-          {acc.description && (
-            <div className="bg-gray-50 rounded-xl p-3">
-              <p className="text-xs text-gray-400 mb-1">Description</p>
-              <p className="text-sm text-gray-600">{acc.description}</p>
-            </div>
-          )}
-          <div className="flex gap-2 pt-1 border-t">
-            <button onClick={() => onEdit(acc)} className="flex-1 py-2.5 border rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center justify-center gap-1.5">
-              <Edit3 size={14} /> Edit Account
-            </button>
+
+        {/* Tabs */}
+        <div className="flex border-b px-5 gap-1">
+          {(["details", "ledger"] as const).map((t) => (
             <button
-              onClick={() => { if (confirm(`Remove "${acc.name}" (${acc.code})? This cannot be undone.`)) { onDelete(acc.code); onClose(); } }}
-              className="flex-1 py-2.5 border border-red-200 text-red-600 hover:bg-red-50 rounded-xl text-sm font-medium flex items-center justify-center gap-1.5"
+              key={t}
+              onClick={() => setTab(t)}
+              className={`py-2.5 px-3 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === t ? "border-orange-500 text-orange-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}
             >
-              <Trash2 size={14} /> Delete
+              {t === "ledger" ? `Ledger (${ledgerEntries.length})` : "Details"}
             </button>
-          </div>
+          ))}
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {tab === "details" && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-gray-50 rounded-xl p-3">
+                  <p className="text-xs text-gray-400 mb-1">Type</p>
+                  <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border ${typeColors[acc.type]}`}>{acc.type}</span>
+                </div>
+                <div className="bg-gray-50 rounded-xl p-3">
+                  <p className="text-xs text-gray-400 mb-1">Status</p>
+                  <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${acc.isActive === false ? "bg-gray-100 text-gray-500" : "bg-green-100 text-green-700"}`}>
+                    {acc.isActive === false ? "Inactive" : "Active"}
+                  </span>
+                </div>
+                <div className="col-span-2 bg-gray-50 rounded-xl p-3">
+                  <p className="text-xs text-gray-400 mb-1">Current Balance</p>
+                  <p className={`text-2xl font-bold ${acc.balance < 0 ? "text-red-600" : "text-gray-900"}`}>{formatCurrency(acc.balance)}</p>
+                </div>
+              </div>
+              {acc.description && (
+                <div className="bg-gray-50 rounded-xl p-3">
+                  <p className="text-xs text-gray-400 mb-1">Description</p>
+                  <p className="text-sm text-gray-600">{acc.description}</p>
+                </div>
+              )}
+              {ledgerEntries.length > 0 && (
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="bg-green-50 rounded-xl p-3">
+                    <p className="text-xs text-gray-500">Total Debits</p>
+                    <p className="font-semibold text-green-700 text-sm mt-0.5">{formatCurrency(totalDebits)}</p>
+                  </div>
+                  <div className="bg-red-50 rounded-xl p-3">
+                    <p className="text-xs text-gray-500">Total Credits</p>
+                    <p className="font-semibold text-red-700 text-sm mt-0.5">{formatCurrency(totalCredits)}</p>
+                  </div>
+                  <div className="bg-blue-50 rounded-xl p-3">
+                    <p className="text-xs text-gray-500">Transactions</p>
+                    <p className="font-semibold text-blue-700 text-sm mt-0.5">{ledgerEntries.length}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Adjust Balance */}
+              {showAdjust ? (
+                <form onSubmit={handleAdjustSubmit} className="border border-orange-200 rounded-xl p-4 space-y-3 bg-orange-50">
+                  <p className="text-sm font-semibold text-orange-800">Adjust Balance</p>
+                  <div>
+                    <label className="text-xs font-medium text-gray-600 block mb-1">New Balance ($)</label>
+                    <input
+                      type="number" step="0.01" required
+                      value={adjustBalance}
+                      onChange={(e) => setAdjustBalance(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-orange-400 outline-none bg-white"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Difference:{" "}
+                      <span className={`font-semibold ${parseFloat(adjustBalance) - acc.balance >= 0 ? "text-green-700" : "text-red-700"}`}>
+                        {!isNaN(parseFloat(adjustBalance)) ? (parseFloat(adjustBalance) - acc.balance >= 0 ? "+" : "") + formatCurrency(parseFloat(adjustBalance) - acc.balance) : "—"}
+                      </span>
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-600 block mb-1">Memo (optional)</label>
+                    <input value={adjustMemo} onChange={(e) => setAdjustMemo(e.target.value)} placeholder="Reason for adjustment…" className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-orange-400 outline-none bg-white" />
+                  </div>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setShowAdjust(false)} className="flex-1 py-2 border rounded-lg text-sm text-gray-600 hover:bg-white">Cancel</button>
+                    <button type="submit" className="flex-1 py-2 bg-orange-600 text-white rounded-lg text-sm font-medium hover:bg-orange-700">Apply Adjustment</button>
+                  </div>
+                </form>
+              ) : (
+                <button onClick={() => { setAdjustBalance(acc.balance.toFixed(2)); setShowAdjust(true); }} className="w-full py-2 border border-dashed border-orange-300 text-orange-600 rounded-xl text-sm hover:bg-orange-50 flex items-center justify-center gap-1.5">
+                  <Calculator size={14} /> Adjust Balance
+                </button>
+              )}
+            </>
+          )}
+
+          {tab === "ledger" && (
+            <>
+              {ledgerEntries.length === 0 ? (
+                <div className="text-center py-10 text-gray-400 text-sm">
+                  <BookOpen size={32} className="mx-auto mb-2 opacity-30" />
+                  No journal entries reference this account yet
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-3 gap-2 text-center mb-2">
+                    <div className="bg-green-50 rounded-xl p-3">
+                      <p className="text-xs text-gray-500">Total Debits</p>
+                      <p className="font-semibold text-green-700 text-sm mt-0.5">{formatCurrency(totalDebits)}</p>
+                    </div>
+                    <div className="bg-red-50 rounded-xl p-3">
+                      <p className="text-xs text-gray-500">Total Credits</p>
+                      <p className="font-semibold text-red-700 text-sm mt-0.5">{formatCurrency(totalCredits)}</p>
+                    </div>
+                    <div className={`rounded-xl p-3 ${totalDebits - totalCredits >= 0 ? "bg-blue-50" : "bg-orange-50"}`}>
+                      <p className="text-xs text-gray-500">Net</p>
+                      <p className={`font-semibold text-sm mt-0.5 ${totalDebits - totalCredits >= 0 ? "text-blue-700" : "text-orange-700"}`}>{formatCurrency(Math.abs(totalDebits - totalCredits))}</p>
+                    </div>
+                  </div>
+                  <div className="rounded-xl border overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50 border-b">
+                        <tr>
+                          <th className="text-left px-3 py-2 font-medium text-gray-500">Date</th>
+                          <th className="text-left px-3 py-2 font-medium text-gray-500">Description</th>
+                          <th className="text-right px-3 py-2 font-medium text-green-600">DR</th>
+                          <th className="text-right px-3 py-2 font-medium text-red-500">CR</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ledgerEntries.map((je) => {
+                          const isDr = je.debit === acc.name;
+                          return (
+                            <tr key={je.id} className="border-b last:border-0 hover:bg-gray-50">
+                              <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{je.date}</td>
+                              <td className="px-3 py-2">
+                                <p className="text-gray-800">{je.description}</p>
+                                {je.reference !== "—" && <p className="text-gray-400 font-mono">{je.reference}</p>}
+                              </td>
+                              <td className="px-3 py-2 text-right text-green-700 font-medium">{isDr ? formatCurrency(je.amount) : "—"}</td>
+                              <td className="px-3 py-2 text-right text-red-600 font-medium">{!isDr ? formatCurrency(je.amount) : "—"}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot className="border-t bg-gray-50 font-semibold">
+                        <tr>
+                          <td colSpan={2} className="px-3 py-2 text-xs text-gray-500">Totals</td>
+                          <td className="px-3 py-2 text-right text-green-700">{formatCurrency(totalDebits)}</td>
+                          <td className="px-3 py-2 text-right text-red-600">{formatCurrency(totalCredits)}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-5 border-t flex gap-2">
+          <button
+            onClick={() => { onToggleActive(acc.code); onClose(); }}
+            className={`flex-1 py-2.5 border rounded-xl text-sm font-medium flex items-center justify-center gap-1.5 ${acc.isActive === false ? "text-green-700 border-green-200 hover:bg-green-50" : "text-gray-500 hover:bg-gray-50"}`}
+          >
+            {acc.isActive === false ? <><CheckCircle size={14} /> Activate</> : <><XCircle size={14} /> Deactivate</>}
+          </button>
+          <button onClick={() => onEdit(acc)} className="flex-1 py-2.5 border rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center justify-center gap-1.5">
+            <Edit3 size={14} /> Edit
+          </button>
+          <button
+            onClick={() => { if (confirm(`Remove "${acc.name}" (${acc.code})? This cannot be undone.`)) { onDelete(acc.code); onClose(); } }}
+            className="flex-1 py-2.5 border border-red-200 text-red-600 hover:bg-red-50 rounded-xl text-sm font-medium flex items-center justify-center gap-1.5"
+          >
+            <Trash2 size={14} /> Delete
+          </button>
         </div>
       </div>
     </div>
@@ -2669,6 +2943,24 @@ function AccountFormModal({ account, onClose, onSave, existing }: {
   });
   const sf = <K extends keyof typeof form>(k: K, v: typeof form[K]) => setForm((p) => ({ ...p, [k]: v }));
 
+  const [codeManual, setCodeManual] = useState(!!account);
+
+  const suggestCode = useCallback((type: Account["type"]) => {
+    const ranges: Record<string, [number, number]> = {
+      Asset: [1000, 1999], Liability: [2000, 2999], Equity: [3000, 3999], Revenue: [4000, 4999], Expense: [5000, 5999],
+    };
+    const [min, max] = ranges[type];
+    const used = existing.map((a) => parseInt(a.code)).filter((n) => !isNaN(n) && n >= min && n <= max).sort((a, b) => b - a);
+    const next = used.length === 0 ? min + 100 : used[0] + 100;
+    return next <= max ? String(next) : "";
+  }, [existing]);
+
+  useEffect(() => {
+    if (!account && !codeManual) {
+      setForm((p) => ({ ...p, code: suggestCode(p.type) }));
+    }
+  }, [form.type, account, codeManual, suggestCode]);
+
   const codeExists = existing.some((a) => a.code === form.code && (!account || a.code !== account.code));
   const codeFormatOk = /^\d{4,6}$/.test(form.code);
 
@@ -2696,11 +2988,13 @@ function AccountFormModal({ account, onClose, onSave, existing }: {
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-xs font-medium text-gray-600 block mb-1">Account Code *</label>
+            <label className="text-xs font-medium text-gray-600 block mb-1">
+              Account Code * {!account && !codeManual && form.code && <span className="text-orange-500 font-normal">(auto-suggested)</span>}
+            </label>
             <input
               required
               value={form.code}
-              onChange={(e) => sf("code", e.target.value.replace(/\D/g, "").slice(0, 6))}
+              onChange={(e) => { setCodeManual(true); sf("code", e.target.value.replace(/\D/g, "").slice(0, 6)); }}
               placeholder="e.g. 1150"
               readOnly={!!account}
               className={`w-full px-3 py-2 border rounded-lg text-sm font-mono focus:ring-2 focus:ring-orange-400 outline-none ${codeExists ? "border-red-400 bg-red-50" : account ? "bg-gray-50 text-gray-500" : ""}`}
