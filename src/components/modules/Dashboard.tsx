@@ -6,15 +6,26 @@ import { formatCurrency } from "@/lib/utils";
 import {
   ShoppingCart,
   Users,
-  Calculator,
-  FileText,
+  Settings,
   TrendingUp,
   DollarSign,
   UserCheck,
-  FileCheck,
+  Package,
   ArrowUpRight,
   ArrowDownRight,
+  AlertTriangle,
 } from "lucide-react";
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts";
 
 function relativeTime(ts: string): string {
   const diff = Date.now() - new Date(ts).getTime();
@@ -30,15 +41,16 @@ function relativeTime(ts: string): string {
 const MODULE_LINKS = [
   { module: "pos" as const, label: "Point of Sale", desc: "Manage sales, inventory & customers", icon: ShoppingCart, color: "from-green-500 to-emerald-600" },
   { module: "hr" as const, label: "HR Management", desc: "Employees, attendance & payroll", icon: Users, color: "from-purple-500 to-violet-600" },
+  { module: "settings" as const, label: "Settings", desc: "Configure business preferences", icon: Settings, color: "from-gray-500 to-gray-600" },
 ];
 
 const NOTIF_TYPE_COLOR: Record<string, string> = {
   pos: "bg-green-500",
   hr: "bg-purple-500",
-  accounting: "bg-orange-500",
-  pdf: "bg-red-500",
   system: "bg-blue-500",
 };
+
+const PIE_COLORS = ["#22c55e", "#3b82f6", "#a855f7"];
 
 export default function Dashboard() {
   const setModule = useAppStore((s) => s.setModule);
@@ -46,23 +58,18 @@ export default function Dashboard() {
   const salesHistory = usePOSSalesStore((s) => s.salesHistory);
   const notifications = useNotificationStore((s) => s.notifications);
 
-  const [pendingInvoices, setPendingInvoices] = useState(0);
-  const [overdueCount, setOverdueCount] = useState(0);
   const [productCount, setProductCount] = useState(0);
+  const [lowStockCount, setLowStockCount] = useState(0);
 
   useEffect(() => {
-    fetch("/api/invoices")
+    fetch("/api/products")
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) {
-          setPendingInvoices(data.filter((i) => i.status === "sent" || i.status === "overdue").length);
-          setOverdueCount(data.filter((i) => i.status === "overdue").length);
+          setProductCount(data.length);
+          setLowStockCount(data.filter((p: { quantity?: number }) => (p.quantity ?? 0) < 10).length);
         }
       })
-      .catch(() => {});
-    fetch("/api/products")
-      .then((r) => r.json())
-      .then((data) => { if (Array.isArray(data)) setProductCount(data.length); })
       .catch(() => {});
   }, []);
 
@@ -104,6 +111,32 @@ export default function Dashboard() {
   const revenueGrowthStr = lastMonthRevenue === 0 && thisMonthRevenue === 0 ? "—" : `${revenueGrowthNum >= 0 ? "+" : ""}${revenueGrowthNum.toFixed(1)}%`;
   const revenuePositive = revenueGrowthNum >= 0;
 
+  // Revenue trend data (last 7 days)
+  const trendData = useMemo(() => {
+    const buckets: { day: string; revenue: number }[] = [];
+    const now = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toDateString();
+      const label = d.toLocaleDateString([], { month: "short", day: "numeric" });
+      const revenue = salesHistory
+        .filter((s) => new Date(s.timestamp).toDateString() === dateStr)
+        .reduce((s, x) => s + x.total, 0);
+      buckets.push({ day: label, revenue });
+    }
+    return buckets;
+  }, [salesHistory]);
+
+  // Payment method distribution
+  const paymentData = useMemo(() => {
+    const map: Record<string, number> = {};
+    salesHistory.forEach((s) => {
+      map[s.paymentMethod] = (map[s.paymentMethod] ?? 0) + s.total;
+    });
+    return Object.entries(map).map(([name, value]) => ({ name, value }));
+  }, [salesHistory]);
+
   const stats = [
     {
       label: "Today's Sales",
@@ -122,12 +155,12 @@ export default function Dashboard() {
       positive: true,
     },
     {
-      label: "Pending Invoices",
-      value: String(pendingInvoices),
-      change: overdueCount > 0 ? `${overdueCount} overdue` : "None overdue",
-      icon: FileCheck,
-      color: overdueCount > 0 ? "text-red-600 bg-red-50" : "text-orange-600 bg-orange-50",
-      positive: overdueCount === 0,
+      label: "Products",
+      value: String(productCount),
+      change: lowStockCount > 0 ? `${lowStockCount} low stock` : "Stock healthy",
+      icon: lowStockCount > 0 ? AlertTriangle : Package,
+      color: lowStockCount > 0 ? "text-amber-600 bg-amber-50" : "text-blue-600 bg-blue-50",
+      positive: lowStockCount === 0,
     },
     {
       label: "Revenue Growth",
@@ -142,6 +175,7 @@ export default function Dashboard() {
   const quickLinks = [
     { ...MODULE_LINKS[0], stat: todaySales > 0 ? formatCurrency(todaySales) : "New Sale" },
     { ...MODULE_LINKS[1], stat: activeEmployees > 0 ? `${activeEmployees} Active` : "Manage Staff" },
+    { ...MODULE_LINKS[2], stat: "Configure" },
   ];
 
   return (
@@ -150,7 +184,7 @@ export default function Dashboard() {
       <div className="bg-linear-to-r from-blue-600 to-purple-700 rounded-2xl p-6 text-white">
         <h1 className="text-2xl font-bold">Welcome to OneApp</h1>
         <p className="text-blue-100 mt-1">
-          Your all-in-one business management platform. Manage sales, HR, accounting, and documents from one place.
+          Your all-in-one business management platform. Manage sales, inventory, and HR from one place.
         </p>
       </div>
 
@@ -176,10 +210,71 @@ export default function Dashboard() {
         })}
       </div>
 
+      {/* Charts Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Revenue Trend */}
+        <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-5">
+          <h3 className="text-sm font-semibold text-gray-800 mb-4">Revenue – Last 7 Days</h3>
+          {salesHistory.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-10">Complete some sales to see revenue trends here.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <AreaChart data={trendData}>
+                <defs>
+                  <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={50} />
+                <Tooltip
+                  contentStyle={{ borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 12 }}
+                  formatter={(value) => [formatCurrency(Number(value)), "Revenue"]}
+                />
+                <Area type="monotone" dataKey="revenue" stroke="#3b82f6" strokeWidth={2} fill="url(#revGrad)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* Payment Distribution */}
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <h3 className="text-sm font-semibold text-gray-800 mb-4">Payment Methods</h3>
+          {paymentData.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-10">No payment data yet.</p>
+          ) : (
+            <div className="flex flex-col items-center">
+              <ResponsiveContainer width="100%" height={160}>
+                <PieChart>
+                  <Pie data={paymentData} cx="50%" cy="50%" innerRadius={40} outerRadius={65} dataKey="value" paddingAngle={3}>
+                    {paymentData.map((_, i) => (
+                      <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{ borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 12 }}
+                    formatter={(value) => [formatCurrency(Number(value)), "Revenue"]}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="flex flex-wrap gap-3 mt-2 justify-center">
+                {paymentData.map((d, i) => (
+                  <span key={d.name} className="flex items-center gap-1.5 text-xs text-gray-600 capitalize">
+                    <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
+                    {d.name}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Quick Links */}
       <div>
         <h3 className="text-lg font-semibold text-gray-800 mb-3">Quick Access</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {quickLinks.map((link) => {
             const Icon = link.icon;
             return (

@@ -38,6 +38,17 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { formatCurrency, cn } from "@/lib/utils";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts";
 
 interface Product {
   id: string;
@@ -2182,32 +2193,22 @@ function SalesReports({ onBack }: { onBack: () => void }) {
               </h3>
               <p className="text-xs text-gray-400">{period === "today" ? "Today" : period === "week" ? "Last 7 days" : "Last 30 days"}</p>
             </div>
-            <div className="flex items-end gap-1 h-36">
-              {trendData.map((d, i) => (
-                <div key={i} className="flex-1 flex flex-col items-center gap-1 group relative">
-                  <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
-                    {formatCurrency(d.revenue)} · {d.count} sales
-                  </div>
-                  <div
-                    className="w-full bg-green-500 rounded-t hover:bg-green-600 transition-colors cursor-default"
-                    style={{ height: `${Math.max(4, (d.revenue / maxTrend) * 100)}%` }}
+            {trendData.every((d) => d.revenue === 0) ? (
+              <p className="text-sm text-gray-400 text-center py-10">No sales data for this period</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart data={trendData}>
+                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval={trendData.length > 14 ? Math.ceil(trendData.length / 7) - 1 : 0} />
+                  <YAxis tick={{ fontSize: 10, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={45} />
+                  <Tooltip
+                    contentStyle={{ borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 12 }}
+                    formatter={(value) => [formatCurrency(Number(value)), "Revenue"]}
+                    labelFormatter={(label) => String(label)}
                   />
-                </div>
-              ))}
-            </div>
-            {/* X-axis labels — show every nth for readability */}
-            <div className="flex items-center gap-1 mt-1">
-              {trendData.map((d, i) => {
-                const step = trendData.length > 14 ? Math.ceil(trendData.length / 7) : 1;
-                return (
-                  <div key={i} className="flex-1 text-center overflow-hidden">
-                    {i % step === 0 && (
-                      <span className="text-[9px] text-gray-400">{d.label}</span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                  <Bar dataKey="revenue" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
             {/* Summary under chart */}
             <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-100">
               <span className="flex items-center gap-1.5 text-xs text-gray-500">
@@ -2225,46 +2226,59 @@ function SalesReports({ onBack }: { onBack: () => void }) {
               <CreditCard size={16} className="text-gray-400" />
               Payment Methods
             </h3>
-            <div className="space-y-4">
-              {(["cash", "card", "mobile"] as const).map((method) => {
-                const val = kpis.byMethod[method];
-                const pct = kpis.revenue > 0 ? (val / kpis.revenue) * 100 : 0;
-                const Icon = method === "cash" ? Banknote : method === "card" ? CreditCard : Smartphone;
-                return (
-                  <div key={method}>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center gap-2">
-                        <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center", methodBg[method])}>
-                          <Icon size={14} className={methodColors[method]} />
+            {kpis.revenue === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-10">No payment data</p>
+            ) : (
+              <>
+                <ResponsiveContainer width="100%" height={140}>
+                  <PieChart>
+                    <Pie
+                      data={[
+                        { name: "Cash", value: kpis.byMethod.cash },
+                        { name: "Card", value: kpis.byMethod.card },
+                        { name: "Mobile", value: kpis.byMethod.mobile },
+                      ].filter((d) => d.value > 0)}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={35}
+                      outerRadius={55}
+                      dataKey="value"
+                      paddingAngle={3}
+                    >
+                      {[
+                        { fill: "#22c55e" },
+                        { fill: "#3b82f6" },
+                        { fill: "#a855f7" },
+                      ].map((c, i) => (
+                        <Cell key={i} fill={c.fill} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{ borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 12 }}
+                      formatter={(value) => [formatCurrency(Number(value)), "Revenue"]}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="space-y-2 mt-3">
+                  {(["cash", "card", "mobile"] as const).map((method) => {
+                    const val = kpis.byMethod[method];
+                    const pct = kpis.revenue > 0 ? (val / kpis.revenue) * 100 : 0;
+                    const Icon = method === "cash" ? Banknote : method === "card" ? CreditCard : Smartphone;
+                    return (
+                      <div key={method} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className={cn("w-6 h-6 rounded flex items-center justify-center", methodBg[method])}>
+                            <Icon size={12} className={methodColors[method]} />
+                          </div>
+                          <span className="text-xs font-medium text-gray-700 capitalize">{method}</span>
                         </div>
-                        <span className="text-sm font-medium text-gray-700 capitalize">{method}</span>
+                        <span className="text-xs text-gray-500">{formatCurrency(val)} ({pct.toFixed(0)}%)</span>
                       </div>
-                      <div className="text-right">
-                        <p className="text-sm font-semibold text-gray-800">{formatCurrency(val)}</p>
-                        <p className="text-xs text-gray-400">{pct.toFixed(1)}%</p>
-                      </div>
-                    </div>
-                    <div className="w-full bg-gray-100 rounded-full h-1.5">
-                      <div
-                        className={cn("h-1.5 rounded-full transition-all", method === "cash" ? "bg-green-500" : method === "card" ? "bg-blue-500" : "bg-purple-500")}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="mt-5 pt-4 border-t border-gray-100">
-              <p className="text-xs font-semibold text-gray-400 uppercase mb-2">Transaction Count</p>
-              {(["cash", "card", "mobile"] as const).map((method) => (
-                <div key={method} className="flex justify-between text-sm py-1">
-                  <span className="text-gray-600 capitalize">{method}</span>
-                  <span className="font-medium text-gray-800">
-                    {periodSales.filter((s) => s.paymentMethod === method).length}
-                  </span>
+                    );
+                  })}
                 </div>
-              ))}
-            </div>
+              </>
+            )}
           </div>
         </div>
 

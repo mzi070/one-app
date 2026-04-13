@@ -18,6 +18,17 @@ import {
   Briefcase,
 } from "lucide-react";
 import { formatCurrency, cn } from "@/lib/utils";
+import {
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 type HRView = "overview" | "employees" | "attendance" | "leave" | "payroll" | "departments";
 
@@ -225,18 +236,68 @@ function HROverview({ onNavigate }: { onNavigate: (v: HRView) => void }) {
         </div>
       </div>
 
-      {/* Department Distribution */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <h3 className="font-semibold text-gray-800 mb-4 flex items-center gap-2"><Building2 size={16} className="text-purple-500" /> Department Distribution</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3">
-          {Object.entries(
-            employees.reduce<Record<string, number>>((acc, e) => { acc[e.department] = (acc[e.department] ?? 0) + 1; return acc; }, {})
-          ).map(([dept, count]) => (
-            <div key={dept} className="text-center p-3 bg-gray-50 rounded-xl border border-gray-100">
-              <p className="text-2xl font-bold text-purple-600">{count}</p>
-              <p className="text-xs text-gray-500 mt-1 leading-tight">{dept}</p>
-            </div>
-          ))}
+      {/* Department Distribution & Salary Overview */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <h3 className="font-semibold text-gray-800 mb-4 flex items-center gap-2"><Building2 size={16} className="text-purple-500" /> Department Distribution</h3>
+          {employees.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-8">Add employees to see department breakdown</p>
+          ) : (
+            (() => {
+              const deptData = Object.entries(
+                employees.reduce<Record<string, number>>((acc, e) => { acc[e.department] = (acc[e.department] ?? 0) + 1; return acc; }, {})
+              ).map(([name, value]) => ({ name, value }));
+              const COLORS = ["#8b5cf6", "#3b82f6", "#22c55e", "#f59e0b", "#ec4899", "#f97316", "#6366f1"];
+              return (
+                <div className="flex flex-col items-center">
+                  <ResponsiveContainer width="100%" height={180}>
+                    <PieChart>
+                      <Pie data={deptData} cx="50%" cy="50%" innerRadius={45} outerRadius={70} dataKey="value" paddingAngle={3}>
+                        {deptData.map((_, i) => (
+                          <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 12 }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 justify-center">
+                    {deptData.map((d, i) => (
+                      <span key={d.name} className="flex items-center gap-1.5 text-xs text-gray-600">
+                        <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                        {d.name} ({d.value})
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()
+          )}
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <h3 className="font-semibold text-gray-800 mb-4 flex items-center gap-2"><DollarSign size={16} className="text-blue-500" /> Salary by Department</h3>
+          {employees.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-8">Add employees to see salary overview</p>
+          ) : (
+            (() => {
+              const salaryData = Object.entries(
+                employees.reduce<Record<string, number>>((acc, e) => { acc[e.department] = (acc[e.department] ?? 0) + e.salary; return acc; }, {})
+              ).map(([dept, total]) => ({ dept, total: Math.round(total / 12) }));
+              return (
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={salaryData} layout="vertical">
+                    <XAxis type="number" tick={{ fontSize: 10, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
+                    <YAxis type="category" dataKey="dept" tick={{ fontSize: 11, fill: "#6b7280" }} axisLine={false} tickLine={false} width={90} />
+                    <Tooltip
+                      contentStyle={{ borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 12 }}
+                      formatter={(value) => [formatCurrency(Number(value)), "Monthly"]}
+                    />
+                    <Bar dataKey="total" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              );
+            })()
+          )}
         </div>
       </div>
     </div>
@@ -1461,4 +1522,4 @@ function DepartmentsView() {
       )}
     </div>
   );
-}
+}

@@ -5,7 +5,7 @@ export type AppModule = "dashboard" | "pos" | "hr" | "settings" | "profile";
 
 // ─── Notification Store ───────────────────────────────────────────────────────
 export type NotifPriority = "info" | "success" | "warning" | "error";
-export type NotifCategory = "pos" | "hr" | "accounting" | "system" | "pdf";
+export type NotifCategory = "pos" | "hr" | "system";
 
 export interface AppNotification {
   id: string;
@@ -392,7 +392,6 @@ export interface AppSettings {
   salesNotifications: boolean;
   lowStockAlerts: boolean;
   hrReminders: boolean;
-  accountingAlerts: boolean;
   // Appearance
   accentColor: string;
   compactMode: boolean;
@@ -427,7 +426,6 @@ export const defaultSettings: AppSettings = {
   salesNotifications: true,
   lowStockAlerts: true,
   hrReminders: true,
-  accountingAlerts: true,
   accentColor: "blue",
   compactMode: false,
   sidebarDefaultOpen: true,
@@ -495,8 +493,8 @@ const defaultProfile: UserProfile = {
     { id: "1", action: "Logged in", module: "System", timestamp: new Date().toISOString() },
     { id: "2", action: "Processed sale #INV-001", module: "POS", timestamp: new Date(Date.now() - 3600000).toISOString() },
     { id: "3", action: "Added employee record", module: "HR", timestamp: new Date(Date.now() - 7200000).toISOString() },
-    { id: "4", action: "Generated invoice", module: "Accounting", timestamp: new Date(Date.now() - 86400000).toISOString() },
-    { id: "5", action: "Converted PDF document", module: "PDF Tools", timestamp: new Date(Date.now() - 172800000).toISOString() },
+    { id: "4", action: "Updated settings", module: "Settings", timestamp: new Date(Date.now() - 86400000).toISOString() },
+    { id: "5", action: "Reviewed dashboard", module: "Dashboard", timestamp: new Date(Date.now() - 172800000).toISOString() },
   ],
 };
 

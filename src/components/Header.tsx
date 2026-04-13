@@ -21,8 +21,6 @@ const moduleTitles: Record<string, string> = {
   dashboard: "Dashboard",
   pos: "Point of Sale",
   hr: "HR Management",
-  accounting: "Accounting",
-  pdf: "PDF Tools",
   settings: "Settings",
   profile: "My Profile",
 };

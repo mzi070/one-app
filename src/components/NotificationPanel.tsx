@@ -9,8 +9,6 @@ import {
   Trash2,
   ShoppingCart,
   Users,
-  Calculator,
-  FileText,
   Settings,
   Info,
   AlertTriangle,
@@ -36,16 +34,12 @@ function formatRelative(iso: string) {
 const categoryIcon: Record<NotifCategory, React.ElementType> = {
   pos: ShoppingCart,
   hr: Users,
-  accounting: Calculator,
-  pdf: FileText,
   system: Settings,
 };
 
 const categoryColor: Record<NotifCategory, string> = {
   pos: "bg-emerald-50 text-emerald-600",
   hr: "bg-violet-50 text-violet-600",
-  accounting: "bg-orange-50 text-orange-600",
-  pdf: "bg-red-50 text-red-600",
   system: "bg-blue-50 text-blue-600",
 };
 
@@ -68,7 +62,7 @@ interface Props {
   onClose: () => void;
 }
 
-type Filter = "all" | "unread" | "pos" | "hr" | "accounting" | "system";
+type Filter = "all" | "unread" | "pos" | "hr" | "system";
 
 export default function NotificationPanel({ open, onClose }: Props) {
   const { notifications, markRead, markAllRead, dismiss, clearAll } = useNotificationStore();
@@ -112,7 +106,6 @@ export default function NotificationPanel({ open, onClose }: Props) {
     { id: "unread", label: `Unread (${unreadCount})` },
     { id: "pos", label: "POS" },
     { id: "hr", label: "HR" },
-    { id: "accounting", label: "Accounting" },
     { id: "system", label: "System" },
   ];
 

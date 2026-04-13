@@ -5,9 +5,8 @@ import {
   LayoutDashboard,
   ShoppingCart,
   Users,
-  Calculator,
-  FileText,
   Settings,
+  User,
   Menu,
   X,
   ChevronRight,
@@ -22,7 +21,7 @@ const modules: { id: AppModule; label: string; icon: React.ElementType; color: s
 
 const bottomModules: { id: AppModule; label: string; icon: React.ElementType; color: string; gradient: string }[] = [
   { id: "settings", label: "Settings", icon: Settings, color: "text-gray-400", gradient: "" },
-  { id: "profile", label: "Profile", icon: Settings, color: "text-pink-400", gradient: "from-pink-500/20 to-pink-600/10" },
+  { id: "profile", label: "Profile", icon: User, color: "text-pink-400", gradient: "from-pink-500/20 to-pink-600/10" },
 ];
 
 export default function Sidebar() {

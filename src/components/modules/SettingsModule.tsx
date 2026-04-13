@@ -542,12 +542,6 @@ export default function SettingsModule() {
                   checked={draft.hrReminders}
                   onChange={(v) => update("hrReminders", v)}
                 />
-                <Toggle
-                  label="Accounting Alerts"
-                  description="Alerts for overdue invoices, unpaid expenses, and financial thresholds"
-                  checked={draft.accountingAlerts}
-                  onChange={(v) => update("accountingAlerts", v)}
-                />
               </div>
 
               <div className="bg-amber-50 border border-amber-100 rounded-lg p-4 flex items-start gap-3">
@@ -636,7 +630,7 @@ export default function SettingsModule() {
                   <div className="w-40 bg-gray-900 rounded-lg p-3 text-white text-xs space-y-1.5">
                     <div className={cn("w-full h-1.5 rounded", accentColors.find((c) => c.value === draft.accentColor)?.class)} />
                     <p className="font-bold text-[10px] opacity-70">OneApp</p>
-                    {["Dashboard", "POS", "HR", "Accounting"].map((item, i) => (
+                    {["Dashboard", "POS", "HR", "Settings"].map((item, i) => (
                       <div
                         key={item}
                         className={cn(
@@ -681,7 +675,7 @@ export default function SettingsModule() {
             <span className="w-2 h-2 rounded-full bg-green-400 inline-block" />
             Database connected
           </span>
-          <span>Next.js 16 · Prisma 7 · Tailwind CSS</span>
+          <span>Next.js 16 · MongoDB · Tailwind CSS</span>
         </div>
       </div>
     </div>
