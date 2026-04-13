@@ -30,8 +30,6 @@ function relativeTime(ts: string): string {
 const MODULE_LINKS = [
   { module: "pos" as const, label: "Point of Sale", desc: "Manage sales, inventory & customers", icon: ShoppingCart, color: "from-green-500 to-emerald-600" },
   { module: "hr" as const, label: "HR Management", desc: "Employees, attendance & payroll", icon: Users, color: "from-purple-500 to-violet-600" },
-  { module: "accounting" as const, label: "Accounting", desc: "Invoices, expenses & reports", icon: Calculator, color: "from-orange-500 to-amber-600" },
-  { module: "pdf" as const, label: "PDF Tools", desc: "Merge, split, compress & convert", icon: FileText, color: "from-red-500 to-rose-600" },
 ];
 
 const NOTIF_TYPE_COLOR: Record<string, string> = {
@@ -144,8 +142,6 @@ export default function Dashboard() {
   const quickLinks = [
     { ...MODULE_LINKS[0], stat: todaySales > 0 ? formatCurrency(todaySales) : "New Sale" },
     { ...MODULE_LINKS[1], stat: activeEmployees > 0 ? `${activeEmployees} Active` : "Manage Staff" },
-    { ...MODULE_LINKS[2], stat: pendingInvoices > 0 ? `${pendingInvoices} Pending` : "View Reports" },
-    { ...MODULE_LINKS[3], stat: productCount > 0 ? `${productCount} Products` : "Tools" },
   ];
 
   return (
@@ -182,8 +178,8 @@ export default function Dashboard() {
 
       {/* Quick Links */}
       <div>
-        <h3 className="text-lg font-semibold text-gray-800 mb-3">Modules</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <h3 className="text-lg font-semibold text-gray-800 mb-3">Quick Access</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {quickLinks.map((link) => {
             const Icon = link.icon;
             return (

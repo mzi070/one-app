@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-export type AppModule = "dashboard" | "pos" | "hr" | "accounting" | "pdf" | "settings" | "profile";
+export type AppModule = "dashboard" | "pos" | "hr" | "settings" | "profile";
 
 // ─── Notification Store ───────────────────────────────────────────────────────
 export type NotifPriority = "info" | "success" | "warning" | "error";

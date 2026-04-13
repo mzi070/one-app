@@ -238,7 +238,7 @@ export default function AccountingModule() {
     if (!inv) return;
     setInvoices((prev) => prev.map((i) => i.id === id ? { ...i, status: "sent" } : i));
     await fetch(`/api/invoices/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "sent" }) });
-    notify({ title: "Invoice Sent", message: `Invoice ${inv.id} for ${inv.customer} (${formatCurrency(inv.amount)}) has been sent.`, category: "accounting", priority: "success", actionLabel: "View Invoices", actionModule: "accounting" });
+    notify({ title: "Invoice Sent", message: `Invoice ${inv.id} for ${inv.customer} (${formatCurrency(inv.amount)}) has been sent.`, category: "accounting", priority: "success", actionLabel: "View Invoices", actionModule: "settings" });
   };
 
   const handleMarkPaid = async (id: string, date?: string, method?: string, notes?: string) => {
@@ -247,7 +247,7 @@ export default function AccountingModule() {
     const paidAt = date ?? new Date().toISOString().slice(0, 10);
     setInvoices((prev) => prev.map((i) => i.id === id ? { ...i, status: "paid", paidAt } : i));
     await fetch(`/api/invoices/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "paid", paidAt }) });
-    notify({ title: "Payment Recorded", message: `Invoice ${inv.id} for ${inv.customer} (${formatCurrency(inv.amount)}) paid${method ? ` via ${method}` : ""}.${notes ? ` Ref: ${notes}` : ""}`, category: "accounting", priority: "success", actionLabel: "View Invoices", actionModule: "accounting" });
+    notify({ title: "Payment Recorded", message: `Invoice ${inv.id} for ${inv.customer} (${formatCurrency(inv.amount)}) paid${method ? ` via ${method}` : ""}.${notes ? ` Ref: ${notes}` : ""}`, category: "accounting", priority: "success", actionLabel: "View Invoices", actionModule: "settings" });
   };
 
   const handleVoidInvoice = async (id: string) => {
@@ -255,7 +255,7 @@ export default function AccountingModule() {
     if (!inv) return;
     setInvoices((prev) => prev.map((i) => i.id === id ? { ...i, status: "void" } : i));
     await fetch(`/api/invoices/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "void" }) });
-    notify({ title: "Invoice Voided", message: `Invoice ${inv.id} has been voided.`, category: "accounting", priority: "warning", actionLabel: "View Invoices", actionModule: "accounting" });
+    notify({ title: "Invoice Voided", message: `Invoice ${inv.id} has been voided.`, category: "accounting", priority: "warning", actionLabel: "View Invoices", actionModule: "settings" });
   };
 
   const handleInvoiceCreated = async (inv: Invoice) => {
@@ -267,7 +267,7 @@ export default function AccountingModule() {
         body: JSON.stringify(inv),
       });
     } catch { await loadAll(); }
-    notify({ title: "Invoice Created", message: `Invoice ${inv.id} for ${inv.customer} (${formatCurrency(inv.amount)}) created.`, category: "accounting", priority: "info", actionLabel: "View Invoices", actionModule: "accounting" });
+    notify({ title: "Invoice Created", message: `Invoice ${inv.id} for ${inv.customer} (${formatCurrency(inv.amount)}) created.`, category: "accounting", priority: "info", actionLabel: "View Invoices", actionModule: "settings" });
   };
 
   const handleEditInvoice = async (inv: Invoice) => {
@@ -279,13 +279,13 @@ export default function AccountingModule() {
         body: JSON.stringify(inv),
       });
     } catch { await loadAll(); }
-    notify({ title: "Invoice Updated", message: `Invoice ${inv.id} for ${inv.customer} updated.`, category: "accounting", priority: "success", actionLabel: "View Invoices", actionModule: "accounting" });
+    notify({ title: "Invoice Updated", message: `Invoice ${inv.id} for ${inv.customer} updated.`, category: "accounting", priority: "success", actionLabel: "View Invoices", actionModule: "settings" });
   };
 
   const handleDeleteInvoice = async (id: string) => {
     setInvoices((prev) => prev.filter((i) => i.id !== id));
     await fetch(`/api/invoices/${id}`, { method: "DELETE" });
-    notify({ title: "Invoice Deleted", message: `Invoice ${id} has been deleted.`, category: "accounting", priority: "info", actionLabel: "View Invoices", actionModule: "accounting" });
+    notify({ title: "Invoice Deleted", message: `Invoice ${id} has been deleted.`, category: "accounting", priority: "info", actionLabel: "View Invoices", actionModule: "settings" });
   };
 
   const handleDuplicateInvoice = async (inv: Invoice) => {
@@ -298,7 +298,7 @@ export default function AccountingModule() {
         body: JSON.stringify(newInv),
       });
     } catch { await loadAll(); }
-    notify({ title: "Invoice Duplicated", message: `${inv.id} duplicated as ${newInv.id} (draft).`, category: "accounting", priority: "info", actionLabel: "View Invoices", actionModule: "accounting" });
+    notify({ title: "Invoice Duplicated", message: `${inv.id} duplicated as ${newInv.id} (draft).`, category: "accounting", priority: "info", actionLabel: "View Invoices", actionModule: "settings" });
   };
 
   const handleApproveExpense = async (id: string) => {
@@ -306,7 +306,7 @@ export default function AccountingModule() {
     if (!exp) return;
     setExpenses((prev) => prev.map((e) => e.id === id ? { ...e, status: "approved" } : e));
     await fetch(`/api/expenses/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "approved" }) });
-    notify({ title: "Expense Approved", message: `${exp.description} (${formatCurrency(exp.amount)}) from ${exp.vendor} approved.`, category: "accounting", priority: "success", actionLabel: "View Expenses", actionModule: "accounting" });
+    notify({ title: "Expense Approved", message: `${exp.description} (${formatCurrency(exp.amount)}) from ${exp.vendor} approved.`, category: "accounting", priority: "success", actionLabel: "View Expenses", actionModule: "settings" });
   };
 
   const handleRejectExpense = async (id: string) => {
@@ -314,14 +314,14 @@ export default function AccountingModule() {
     if (!exp) return;
     setExpenses((prev) => prev.map((e) => e.id === id ? { ...e, status: "rejected" } : e));
     await fetch(`/api/expenses/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "rejected" }) });
-    notify({ title: "Expense Rejected", message: `${exp.description} (${formatCurrency(exp.amount)}) has been rejected.`, category: "accounting", priority: "error", actionLabel: "View Expenses", actionModule: "accounting" });
+    notify({ title: "Expense Rejected", message: `${exp.description} (${formatCurrency(exp.amount)}) has been rejected.`, category: "accounting", priority: "error", actionLabel: "View Expenses", actionModule: "settings" });
   };
 
   const handleDeleteExpense = async (id: string) => {
     const exp = expenses.find((e) => e.id === id);
     setExpenses((prev) => prev.filter((e) => e.id !== id));
     await fetch(`/api/expenses/${id}`, { method: "DELETE" });
-    if (exp) notify({ title: "Expense Deleted", message: `${exp.description} (${formatCurrency(exp.amount)}) deleted.`, category: "accounting", priority: "info", actionLabel: "View Expenses", actionModule: "accounting" });
+    if (exp) notify({ title: "Expense Deleted", message: `${exp.description} (${formatCurrency(exp.amount)}) deleted.`, category: "accounting", priority: "info", actionLabel: "View Expenses", actionModule: "settings" });
   };
 
   const handleEditExpense = async (exp: Expense) => {
@@ -333,7 +333,7 @@ export default function AccountingModule() {
         body: JSON.stringify(exp),
       });
     } catch { await loadAll(); }
-    notify({ title: "Expense Updated", message: `${exp.description} (${formatCurrency(exp.amount)}) updated and resubmitted for approval.`, category: "accounting", priority: "success", actionLabel: "View Expenses", actionModule: "accounting" });
+    notify({ title: "Expense Updated", message: `${exp.description} (${formatCurrency(exp.amount)}) updated and resubmitted for approval.`, category: "accounting", priority: "success", actionLabel: "View Expenses", actionModule: "settings" });
   };
 
   const handleResubmitExpense = async (id: string) => {
@@ -341,7 +341,7 @@ export default function AccountingModule() {
     if (!exp) return;
     setExpenses((prev) => prev.map((e) => e.id === id ? { ...e, status: "pending" } : e));
     await fetch(`/api/expenses/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "pending" }) });
-    notify({ title: "Expense Resubmitted", message: `${exp.description} (${formatCurrency(exp.amount)}) resubmitted for approval.`, category: "accounting", priority: "info", actionLabel: "View Expenses", actionModule: "accounting" });
+    notify({ title: "Expense Resubmitted", message: `${exp.description} (${formatCurrency(exp.amount)}) resubmitted for approval.`, category: "accounting", priority: "info", actionLabel: "View Expenses", actionModule: "settings" });
   };
 
   const handleExpenseAdded = async (exp: Expense) => {
@@ -353,7 +353,7 @@ export default function AccountingModule() {
         body: JSON.stringify(exp),
       });
     } catch { await loadAll(); }
-    notify({ title: "Expense Submitted", message: `${exp.description} (${formatCurrency(exp.amount)}) submitted for approval.`, category: "accounting", priority: "info", actionLabel: "View Expenses", actionModule: "accounting" });
+    notify({ title: "Expense Submitted", message: `${exp.description} (${formatCurrency(exp.amount)}) submitted for approval.`, category: "accounting", priority: "info", actionLabel: "View Expenses", actionModule: "settings" });
   };
 
   const handleAccountAdded = async (acc: Account) => {
@@ -365,7 +365,7 @@ export default function AccountingModule() {
         body: JSON.stringify(acc),
       });
     } catch { await loadAll(); }
-    notify({ title: "Account Added", message: `${acc.name} (${acc.code}) added to chart of accounts.`, category: "accounting", priority: "success", actionLabel: "View Accounts", actionModule: "accounting" });
+    notify({ title: "Account Added", message: `${acc.name} (${acc.code}) added to chart of accounts.`, category: "accounting", priority: "success", actionLabel: "View Accounts", actionModule: "settings" });
   };
 
   const handleEditAccount = async (acc: Account) => {
@@ -377,14 +377,14 @@ export default function AccountingModule() {
         body: JSON.stringify(acc),
       });
     } catch { await loadAll(); }
-    notify({ title: "Account Updated", message: `${acc.name} (${acc.code}) has been updated.`, category: "accounting", priority: "success", actionLabel: "View Accounts", actionModule: "accounting" });
+    notify({ title: "Account Updated", message: `${acc.name} (${acc.code}) has been updated.`, category: "accounting", priority: "success", actionLabel: "View Accounts", actionModule: "settings" });
   };
 
   const handleDeleteAccount = async (code: string) => {
     const acc = accounts.find((a) => a.code === code);
     setAccounts((prev) => prev.filter((a) => a.code !== code));
     await fetch(`/api/accounts/${code}`, { method: "DELETE" });
-    if (acc) notify({ title: "Account Removed", message: `${acc.name} (${acc.code}) removed from chart of accounts.`, category: "accounting", priority: "info", actionLabel: "View Accounts", actionModule: "accounting" });
+    if (acc) notify({ title: "Account Removed", message: `${acc.name} (${acc.code}) removed from chart of accounts.`, category: "accounting", priority: "info", actionLabel: "View Accounts", actionModule: "settings" });
   };
 
   const handleToggleAccountActive = async (code: string) => {
@@ -393,7 +393,7 @@ export default function AccountingModule() {
     const newActive = acc.isActive === false;
     setAccounts((prev) => prev.map((a) => a.code === code ? { ...a, isActive: newActive } : a));
     await fetch(`/api/accounts/${code}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ isActive: newActive }) });
-    notify({ title: newActive ? "Account Activated" : "Account Deactivated", message: `${acc.name} (${acc.code}) is now ${newActive ? "active" : "inactive"}.`, category: "accounting", priority: "info", actionLabel: "View Accounts", actionModule: "accounting" });
+    notify({ title: newActive ? "Account Activated" : "Account Deactivated", message: `${acc.name} (${acc.code}) is now ${newActive ? "active" : "inactive"}.`, category: "accounting", priority: "info", actionLabel: "View Accounts", actionModule: "settings" });
   };
 
   const handleAdjustBalance = async (code: string, newBalance: number, memo: string) => {
@@ -415,7 +415,7 @@ export default function AccountingModule() {
     };
     setJournalEntries((prev) => [je, ...prev]);
     await fetch("/api/journal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(je) });
-    notify({ title: "Balance Adjusted", message: `${acc.name} adjusted by ${diff >= 0 ? "+" : ""}${formatCurrency(diff)} → ${formatCurrency(newBalance)}.`, category: "accounting", priority: "success", actionLabel: "View Accounts", actionModule: "accounting" });
+    notify({ title: "Balance Adjusted", message: `${acc.name} adjusted by ${diff >= 0 ? "+" : ""}${formatCurrency(diff)} → ${formatCurrency(newBalance)}.`, category: "accounting", priority: "success", actionLabel: "View Accounts", actionModule: "settings" });
   };
 
   const handleSeedAccounts = async () => {
@@ -423,7 +423,7 @@ export default function AccountingModule() {
     if (toAdd.length === 0) return;
     setAccounts((prev) => [...prev, ...toAdd].sort((a, b) => a.code.localeCompare(b.code)));
     await Promise.all(toAdd.map((acc) => fetch("/api/accounts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(acc) })));
-    notify({ title: "Chart Seeded", message: `${toAdd.length} standard accounts added.`, category: "accounting", priority: "success", actionLabel: "View Accounts", actionModule: "accounting" });
+    notify({ title: "Chart Seeded", message: `${toAdd.length} standard accounts added.`, category: "accounting", priority: "success", actionLabel: "View Accounts", actionModule: "settings" });
   };
 
   const handleJournalAdded = async (je: JournalEntry) => {
@@ -435,7 +435,7 @@ export default function AccountingModule() {
         body: JSON.stringify(je),
       });
     } catch { await loadAll(); }
-    notify({ title: je.posted ? "Journal Entry Posted" : "Journal Entry Saved as Draft", message: `${je.description} — Dr. ${je.debit} / Cr. ${je.credit} (${formatCurrency(je.amount)}).`, category: "accounting", priority: "success", actionLabel: "View Journal", actionModule: "accounting" });
+    notify({ title: je.posted ? "Journal Entry Posted" : "Journal Entry Saved as Draft", message: `${je.description} — Dr. ${je.debit} / Cr. ${je.credit} (${formatCurrency(je.amount)}).`, category: "accounting", priority: "success", actionLabel: "View Journal", actionModule: "settings" });
   };
 
   const handleEditJournal = async (je: JournalEntry) => {
@@ -447,14 +447,14 @@ export default function AccountingModule() {
         body: JSON.stringify(je),
       });
     } catch { await loadAll(); }
-    notify({ title: "Journal Entry Updated", message: `${je.id}: ${je.description} updated.`, category: "accounting", priority: "success", actionLabel: "View Journal", actionModule: "accounting" });
+    notify({ title: "Journal Entry Updated", message: `${je.id}: ${je.description} updated.`, category: "accounting", priority: "success", actionLabel: "View Journal", actionModule: "settings" });
   };
 
   const handleDeleteJournal = async (id: string) => {
     const je = journalEntries.find((e) => e.id === id);
     setJournalEntries((prev) => prev.filter((e) => e.id !== id));
     await fetch(`/api/journal/${id}`, { method: "DELETE" });
-    if (je) notify({ title: "Entry Removed", message: `Journal entry ${je.id} deleted.`, category: "accounting", priority: "info", actionLabel: "View Journal", actionModule: "accounting" });
+    if (je) notify({ title: "Entry Removed", message: `Journal entry ${je.id} deleted.`, category: "accounting", priority: "info", actionLabel: "View Journal", actionModule: "settings" });
   };
 
   const handleTogglePostJournal = async (id: string) => {

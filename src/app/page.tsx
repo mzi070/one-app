@@ -8,8 +8,6 @@ import Header from "@/components/Header";
 import Dashboard from "@/components/modules/Dashboard";
 import POSModule from "@/components/modules/POSModule";
 import HRModule from "@/components/modules/HRModule";
-import AccountingModule from "@/components/modules/AccountingModule";
-import PDFToolsModule from "@/components/modules/PDFToolsModule";
 import SettingsModule from "@/components/modules/SettingsModule";
 import ProfileModule from "@/components/modules/ProfileModule";
 import ToastContainer from "@/components/ToastContainer";
@@ -42,8 +40,6 @@ export default function Home() {
       case "dashboard": return <Dashboard />;
       case "pos": return <POSModule />;
       case "hr": return <HRModule />;
-      case "accounting": return <AccountingModule />;
-      case "pdf": return <PDFToolsModule />;
       case "settings": return <SettingsModule />;
       case "profile": return <ProfileModule />;
       default: return <Dashboard />;

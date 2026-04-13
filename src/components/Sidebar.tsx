@@ -18,8 +18,6 @@ const modules: { id: AppModule; label: string; icon: React.ElementType; color: s
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, color: "text-blue-400", gradient: "from-blue-500/20 to-blue-600/10" },
   { id: "pos", label: "Point of Sale", icon: ShoppingCart, color: "text-emerald-400", gradient: "from-emerald-500/20 to-emerald-600/10" },
   { id: "hr", label: "HR Management", icon: Users, color: "text-violet-400", gradient: "from-violet-500/20 to-violet-600/10" },
-  { id: "accounting", label: "Accounting", icon: Calculator, color: "text-amber-400", gradient: "from-amber-500/20 to-amber-600/10" },
-  { id: "pdf", label: "PDF Tools", icon: FileText, color: "text-rose-400", gradient: "from-rose-500/20 to-rose-600/10" },
 ];
 
 const bottomModules: { id: AppModule; label: string; icon: React.ElementType; color: string; gradient: string }[] = [
