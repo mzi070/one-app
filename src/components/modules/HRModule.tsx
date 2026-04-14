@@ -12,10 +12,9 @@ import {
 } from "@/store";
 import {
   Users, UserPlus, Clock, Calendar, DollarSign, Building2,
-  Search, X, ChevronRight, CheckCircle, XCircle, AlertCircle,
+  Search, X, ChevronRight, CheckCircle, XCircle,
   Mail, Phone, MapPin, Edit3, Trash2, Download, Plus,
-  TrendingUp, ArrowLeft, FileText, BarChart3, CheckSquare,
-  Briefcase,
+  TrendingUp, FileText, BarChart3, CheckSquare,
 } from "lucide-react";
 import { formatCurrency, cn } from "@/lib/utils";
 import {
@@ -211,7 +210,7 @@ function HROverview({ onNavigate }: { onNavigate: (v: HRView) => void }) {
         {/* Today's Attendance */}
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-gray-800 flex items-center gap-2"><Clock size={16} className="text-blue-500" /> Today's Attendance</h3>
+            <h3 className="font-semibold text-gray-800 flex items-center gap-2"><Clock size={16} className="text-blue-500" /> Today&apos;s Attendance</h3>
             <button onClick={() => onNavigate("attendance")} className="text-xs text-purple-600 hover:text-purple-700">View all</button>
           </div>
           <div className="space-y-2">
@@ -381,8 +380,8 @@ function EmployeeFormModal({ employee, departments, onClose, onSave }: {
   );
 }
 
-function EmployeeDetailPanel({ employee, employees, attendance, leaveRequests, onClose, onEdit, onDelete }: {
-  employee: HREmployee; employees: HREmployee[];
+function EmployeeDetailPanel({ employee, attendance, leaveRequests, onClose, onEdit, onDelete }: {
+  employee: HREmployee;
   attendance: AttendanceRecord[]; leaveRequests: LeaveRequest[];
   onClose: () => void; onEdit: () => void; onDelete: () => void;
 }) {
@@ -676,7 +675,6 @@ function EmployeesView() {
       {detailEmp && (
         <EmployeeDetailPanel
           employee={detailEmp}
-          employees={employees}
           attendance={attendance}
           leaveRequests={leaveRequests}
           onClose={() => setDetailEmp(null)}

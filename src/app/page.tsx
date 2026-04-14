@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { useAppStore, useAuthStore } from "@/store";
 import Sidebar from "@/components/Sidebar";
@@ -12,13 +12,15 @@ import SettingsModule from "@/components/modules/SettingsModule";
 import ProfileModule from "@/components/modules/ProfileModule";
 import ToastContainer from "@/components/ToastContainer";
 
+const subscribe = () => () => {};
+const getSnapshot = () => true;
+const getServerSnapshot = () => false;
+
 export default function Home() {
   const router = useRouter();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const currentModule = useAppStore((s) => s.currentModule);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => { setMounted(true); }, []);
+  const mounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
   useEffect(() => {
     if (mounted && !isAuthenticated) router.replace("/login");

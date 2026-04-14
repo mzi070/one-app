@@ -42,7 +42,7 @@ export function useBarcodeScanner(
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [enabled, handleKeyDown]);
 
-  return { buffer: buffer.current };
+  return { buffer };
 }
 
 export function useBarcodeInput(initialValue = "") {
@@ -81,8 +81,7 @@ export function useLocalStorage<T>(key: string, initialValue: T): [T, (value: T 
     try {
       const item = window.localStorage.getItem(key);
       return item ? JSON.parse(item) : initialValue;
-    } catch (error) {
-      console.error(error);
+    } catch {
       return initialValue;
     }
   });
@@ -95,8 +94,8 @@ export function useLocalStorage<T>(key: string, initialValue: T): [T, (value: T 
         if (typeof window !== "undefined") {
           window.localStorage.setItem(key, JSON.stringify(valueToStore));
         }
-      } catch (error) {
-        console.error(error);
+      } catch {
+        // ignore storage errors
       }
     },
     [key, storedValue]
@@ -118,29 +117,32 @@ export function useFetch<T>(url: string | null, options?: RequestInit): UseFetch
     loading: !!url,
     error: null,
   });
+  const bodyRef = useRef(options?.body);
+  bodyRef.current = options?.body;
 
   useEffect(() => {
     if (!url) {
-      setState({ data: null, loading: false, error: null });
+      setState((prev) => prev.loading || prev.data || prev.error ? { data: null, loading: false, error: null } : prev);
       return;
     }
 
     const controller = new AbortController();
     setState((prev) => ({ ...prev, loading: true, error: null }));
 
-    fetch(url, { ...options, signal: controller.signal })
+    fetch(url, { ...options, body: bodyRef.current, signal: controller.signal })
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
         return res.json();
       })
       .then((data) => setState({ data, loading: false, error: null }))
-      .catch((error) => {
-        if (error.name === "AbortError") return;
-        setState({ data: null, loading: false, error: error as Error });
+      .catch((err) => {
+        if (err.name === "AbortError") return;
+        setState({ data: null, loading: false, error: err as Error });
       });
 
     return () => controller.abort();
-  }, [url, options?.body]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url]);
 
   return state;
 }
@@ -148,23 +150,24 @@ export function useFetch<T>(url: string | null, options?: RequestInit): UseFetch
 // ─── useAsync ────────────────────────────────────────────────────────────────────────────────────────────────
 export function useAsync<T>(
   asyncFn: () => Promise<T>,
-  deps: unknown[] = []
 ): UseFetchState<T> & { execute: () => Promise<void> } {
   const [state, setState] = useState<UseFetchState<T>>({
     data: null,
     loading: false,
     error: null,
   });
+  const fnRef = useRef(asyncFn);
+  useEffect(() => { fnRef.current = asyncFn; });
 
   const execute = useCallback(async () => {
     setState((prev) => ({ ...prev, loading: true, error: null }));
     try {
-      const data = await asyncFn();
+      const data = await fnRef.current();
       setState({ data, loading: false, error: null });
-    } catch (error) {
-      setState({ data: null, loading: false, error: error as Error });
+    } catch (err) {
+      setState({ data: null, loading: false, error: err as Error });
     }
-  }, deps);
+  }, []);
 
   return { ...state, execute };
 }
@@ -194,10 +197,12 @@ export function useInterval(callback: () => void, delay: number | null): void {
 // ─── usePrevious ────────────────────────────────────────────────────────────────────────────────────────
 export function usePrevious<T>(value: T): T | undefined {
   const ref = useRef<T | undefined>(undefined);
+  const [prev, setPrev] = useState<T | undefined>(undefined);
   useEffect(() => {
+    setPrev(ref.current);
     ref.current = value;
   }, [value]);
-  return ref.current;
+  return prev;
 }
 
 // ─── useOnClickOutside ────────────────────────────────────────────────────────
@@ -225,11 +230,11 @@ export function useMediaQuery(query: string): boolean {
 
   useEffect(() => {
     const media = window.matchMedia(query);
-    if (media.matches !== matches) setMatches(media.matches);
-    const listener = () => setMatches(media.matches);
+    setMatches(media.matches); // eslint-disable-line react-hooks/set-state-in-effect -- sync init from external API
+    const listener = (e: MediaQueryListEvent) => setMatches(e.matches);
     media.addEventListener("change", listener);
     return () => media.removeEventListener("change", listener);
-  }, [matches, query]);
+  }, [query]);
 
   return matches;
 }
@@ -256,7 +261,7 @@ export function useCopyToClipboard(): [string | null, (text: string) => Promise<
     try {
       await navigator.clipboard.writeText(text);
       setCopiedText(text);
-    } catch (error) {
+    } catch {
       setCopiedText(null);
     }
   }, []);
@@ -267,7 +272,6 @@ export function useCopyToClipboard(): [string | null, (text: string) => Promise<
 // ─── useHover ────────────────────────────────────────────────────────────────────
 export function useHover(): [boolean, (element: React.RefObject<HTMLElement | null>) => void] {
   const [hovered, setHovered] = useState(false);
-  const ref = useRef<HTMLElement | null>(null);
 
   const handleMouseEnter = () => setHovered(true);
   const handleMouseLeave = () => setHovered(false);

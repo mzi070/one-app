@@ -39,7 +39,7 @@ export async function DELETE(
     const { id } = await params;
     await Product.findByIdAndUpdate(id, { isActive: false });
     return NextResponse.json({ success: true });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Unknown error";
+  } catch {
+    return NextResponse.json({ error: "Failed to delete" }, { status: 500 });
   }
 }

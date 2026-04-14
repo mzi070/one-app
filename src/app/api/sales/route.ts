@@ -32,16 +32,15 @@ export async function GET(request: NextRequest) {
       const totalSales = sales.length;
       const averageSale = totalSales > 0 ? totalRevenue / totalSales : 0;
       let itemsSold = 0;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      sales.forEach((s: any) => {
-        s.items.forEach((item: any) => { itemsSold += item.quantity; });
+      sales.forEach((s) => {
+        const items = (s as unknown as { items: { quantity: number; productId: { toString(): string }; total: number }[] }).items;
+        items.forEach((item) => { itemsSold += item.quantity; });
       });
 
       const productStats = new Map<string, { name: string; quantity: number; revenue: number }>();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      sales.forEach((s: any) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        s.items.forEach((item: any) => {
+      sales.forEach((s) => {
+        const items = (s as unknown as { items: { quantity: number; productId: { toString(): string }; total: number }[] }).items;
+        items.forEach((item) => {
           const current = productStats.get(item.productId.toString());
           if (current) {
             current.quantity += item.quantity;

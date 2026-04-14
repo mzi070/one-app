@@ -20,12 +20,12 @@ const themeOptions: ThemeOption[] = [
 ];
 
 export function ThemeToggle() {
-  const { isDark, setDark, toggleTheme } = useThemeStore();
+  const { isDark, setDark } = useThemeStore();
   const [mounted, setMounted] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
+    setMounted(true); // eslint-disable-line react-hooks/set-state-in-effect -- client-only hydration guard
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
     if (mediaQuery.matches && !localStorage.getItem("oneapp-theme")) {
       setDark(true);

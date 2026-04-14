@@ -9,8 +9,6 @@ import {
   ArrowRight,
   ShoppingCart,
   Users,
-  Calculator,
-  FileText,
   CheckCircle2,
   Loader2,
   Sparkles,
@@ -33,8 +31,6 @@ const DEMO_OTP = "123456";
 const FEATURES = [
   { icon: ShoppingCart, label: "Point of Sale",   desc: "Fast checkout & smart inventory tracking", color: "text-emerald-400", bg: "bg-emerald-500/10" },
   { icon: Users,        label: "HR Management",   desc: "Staff, payroll, attendance & leave",       color: "text-violet-400",  bg: "bg-violet-500/10"  },
-  { icon: Calculator,   label: "Accounting",       desc: "Invoices, expenses & financial reports",   color: "text-orange-400",  bg: "bg-orange-500/10"  },
-  { icon: FileText,     label: "PDF Tools",        desc: "Merge, split, compress & convert",         color: "text-cyan-400",    bg: "bg-cyan-500/10"    },
 ];
 
 // ── Password strength ─────────────────────────────────────────────────────────
@@ -84,7 +80,7 @@ export default function LoginPage() {
   const [forgotError,   setForgotError]   = useState("");
   const [forgotLoading, setForgotLoading] = useState(false);
 
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => { setMounted(true); }, []); // eslint-disable-line react-hooks/set-state-in-effect -- client hydration guard
   useEffect(() => {
     if (mounted && isAuthenticated) router.replace("/");
   }, [mounted, isAuthenticated, router]);
@@ -316,7 +312,6 @@ export default function LoginPage() {
         {[
           { icon: ShoppingCart, color: "text-emerald-400", bg: "bg-emerald-500/15", label: "Point of Sale",  pos: "top-[9%] left-[4%]",      delay: "0s" },
           { icon: Users,        color: "text-violet-400",  bg: "bg-violet-500/15",  label: "HR Management",  pos: "top-[30%] right-[2%]",     delay: "1s" },
-          { icon: Calculator,   color: "text-orange-400",  bg: "bg-orange-500/15",  label: "Accounting",     pos: "bottom-[22%] right-[4%]",  delay: "2s" },
         ].map(({ icon: Icon, color, bg, label, pos, delay }) => (
           <div
             key={label}
@@ -612,7 +607,7 @@ export default function LoginPage() {
                 <Mail size={22} className="text-indigo-600" />
               </div>
               <h2 className="text-[1.5rem] font-bold text-gray-900 mb-2 tracking-tight">Reset your password</h2>
-              <p className="text-gray-500 text-sm mb-8">Enter your email and we'll send you a link to reset your password.</p>
+              <p className="text-gray-500 text-sm mb-8">Enter your email and we&apos;ll send you a link to reset your password.</p>
 
               <form onSubmit={handleForgot} className="space-y-4" noValidate>
                 <div>
@@ -667,7 +662,7 @@ export default function LoginPage() {
               <h2 className="text-xl font-bold text-gray-900 mb-2">Check your inbox</h2>
               <p className="text-gray-500 text-sm mb-1">We sent a password reset link to</p>
               <p className="font-semibold text-indigo-700 text-sm mb-8">{forgotEmail}</p>
-              <p className="text-xs text-gray-400 mb-8">Didn't receive it? Check your spam folder or try a different address.</p>
+              <p className="text-xs text-gray-400 mb-8">Didn&apos;t receive it? Check your spam folder or try a different address.</p>
               <button
                 onClick={() => { setStep("login"); setForgotEmail(""); setForgotError(""); }}
                 className="flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-800 font-medium transition-colors mx-auto"

@@ -133,6 +133,7 @@ export default function POSModule() {
     const itemCount = cart.reduce((s, i) => s + i.quantity, 0);
 
     const now = new Date().toISOString();
+    // eslint-disable-next-line react-hooks/purity -- event handler, not render
     const txnId = pendingTxnId || `TXN-${Date.now()}`;
 
     // Record sale in local history
@@ -219,7 +220,7 @@ export default function POSModule() {
 
   const taxAmount = getTotal() * (taxRate / 100);
 
-  if (view === "products") return <ProductsManager products={products} onBack={() => setView("sale")} onRefresh={loadProducts} />;
+  if (view === "products") return <ProductsManager products={products} onBack={() => setView("sale")} />;
   if (view === "customers") return <CustomersView onBack={() => setView("sale")} onSelectForSale={(id) => { setSelectedCustomerId(id); setView("sale"); }} />;
   if (view === "reports") return <SalesReports onBack={() => setView("sale")} />;
 
@@ -953,7 +954,7 @@ function StockAdjustModal({
   );
 }
 
-function ProductsManager({ products: initialProducts, onBack, onRefresh }: { products: Product[]; onBack: () => void; onRefresh: () => void }) {
+function ProductsManager({ products: initialProducts, onBack }: { products: Product[]; onBack: () => void }) {
   const [products, setProducts] = useState<Product[]>(initialProducts);
   const [search, setSearch] = useState("");
   const [filterCategory, setFilterCategory] = useState("all");

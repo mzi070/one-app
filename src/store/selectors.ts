@@ -2,15 +2,11 @@ import { useMemo, useCallback } from "react";
 import {
   useNotificationStore,
   useToastStore,
-  useAuthStore,
-  useAppStore,
   usePOSStore,
-  usePOSSalesStore,
   usePOSCustomerStore,
   useSettingsStore,
   useProfileStore,
   useHRStore,
-  useThemeStore,
   type AppNotification,
   type ToastItem,
   type POSCustomer,
@@ -66,7 +62,6 @@ export function useCartItemCount(): number {
 }
 
 export function useCartTotal(): { subtotal: number; discount: number; total: number; tax: number } {
-  const cart = usePOSStore((state) => state.cart);
   const getSubtotal = usePOSStore((state) => state.getSubtotal);
   const getTotal = usePOSStore((state) => state.getTotal);
   const taxRate = useSettingsStore((state) => state.taxRate);
@@ -77,7 +72,7 @@ export function useCartTotal(): { subtotal: number; discount: number; total: num
     const discount = subtotal - total;
     const tax = total * (taxRate / 100);
     return { subtotal, discount, total, tax };
-  }, [cart, getSubtotal, getTotal, taxRate]);
+  }, [getSubtotal, getTotal, taxRate]);
 }
 
 export function useFilteredProducts(products: { id: string; name: string; sku: string; category: string | null }[]) {
@@ -217,7 +212,7 @@ export function useSetting<K extends keyof ReturnType<typeof useSettingsStore.ge
 // ─── Profile Selectors ────────────────────────────────────────────────────────────
 export function useRecentActivity(limit = 5) {
   const activityLog = useProfileStore((state) => state.activityLog);
-  return useMemo(() => activityLog.slice(0, limit), [activityLog]);
+  return useMemo(() => activityLog.slice(0, limit), [activityLog, limit]);
 }
 
 // ─── Memoized Selectors (Factory) ─────────────────────────────────────────────────
@@ -238,7 +233,7 @@ export function createPOSFilterSelector<T extends { category: string | null; nam
         const matchesCategory = category === "all" || item.category === category;
         return matchesSearch && matchesCategory;
       });
-    }, [getItems, searchQuery, category]);
+    }, [searchQuery, category]);
 }
 
 // ─── Optimized Action Hooks ───────────────────────────────────────────────────────

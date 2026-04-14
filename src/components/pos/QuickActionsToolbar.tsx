@@ -4,22 +4,17 @@ import { useState } from "react";
 import {
   ScanBarcode,
   Clock,
-  Save,
   RotateCcw,
   Calculator,
   Send,
   UserPlus,
-  Trash2,
   CreditCard,
   Banknote,
-  Printer,
   X,
-  Check,
-  AlertCircle,
 } from "lucide-react";
-import { usePOSStore, useSettingsStore, notify } from "@/store";
+import { usePOSStore, useSettingsStore } from "@/store";
 import { cn, formatCurrency } from "@/lib/utils";
-import { POS_CATEGORIES, QUICK_AMOUNTS } from "@/lib/pos";
+import { QUICK_AMOUNTS } from "@/lib/pos";
 
 interface QuickActionsProps {
   onHold?: () => void;
@@ -32,7 +27,7 @@ export function QuickActionsToolbar({
   onRecall,
   onSaveCustomer,
 }: QuickActionsProps) {
-  const { cart, getTotal, clearCart, setPaymentMethod } = usePOSStore();
+  const { cart, getTotal } = usePOSStore();
   const taxRate = useSettingsStore((s) => s.taxRate);
   const total = getTotal() * (1 + taxRate / 100);
   const [barcodeInput, setBarcodeInput] = useState("");
@@ -178,8 +173,7 @@ interface OrderHoldPanelProps {
 }
 
 export function OrderHoldPanel({ onClose }: OrderHoldPanelProps) {
-  const heldOrders = usePOSStore((s) => (s as unknown as { heldOrders: unknown[] }).heldOrders || []);
-  const [held, setHeld] = useState<{ id: string; timestamp: string; items: unknown[]; total: number }[]>([]);
+  const [held] = useState<{ id: string; timestamp: string; items: unknown[]; total: number }[]>([]);
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>

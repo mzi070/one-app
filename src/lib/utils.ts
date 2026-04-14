@@ -71,7 +71,6 @@ export function formatRelativeTime(date: Date | string): string {
 }
 
 export function getDateRangeLabel(period: "today" | "week" | "month" | "year"): string {
-  const now = new Date();
   switch (period) {
     case "today": return "Today";
     case "week": return "This Week";

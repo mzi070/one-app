@@ -199,7 +199,7 @@ export default function NotificationPanel({ open, onClose }: Props) {
           ) : (
             <div className="divide-y divide-gray-50">
               {filtered.map((n) => {
-                const CatIcon = categoryIcon[n.category];
+                const CatIcon = categoryIcon[n.category] ?? categoryIcon.system;
                 const PrioIcon = priorityIcon[n.priority];
                 return (
                   <div
