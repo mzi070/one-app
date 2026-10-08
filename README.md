@@ -1,53 +1,43 @@
-# OneApp - All-in-One Business Management Platform
+# StorageOps
 
-A comprehensive single-page business management application built with Next.js, featuring POS, HR Management, Accounting, and PDF Tools.
+Storage infrastructure management dashboard for VMware datastores, Synology NAS volumes, and VM storage.
 
 ## Features
 
-### Point of Sale (POS)
-- Product catalog with search and category filtering
-- Real-time cart management with quantity controls
-- Multiple payment methods (Cash, Card, Mobile)
-- Customer management with credit tracking
-- Sales reports and analytics
-- Inventory management with stock tracking
+- **Dashboard** — Capacity overview, usage charts, active alerts at a glance
+- **VMware Datastores** — Track VMFS, NFS, vSAN, and vVOL datastores with capacity bars and status
+- **Synology NAS** — Manage NAS volumes grouped by device, RAID type, disk health, and shares
+- **Virtual Machines** — Monitor VM disk usage, provisioned vs. used storage, and snapshot inventory
+- **Alerts** — Threshold-based capacity and status alerts with acknowledge/dismiss workflow
 
-### HR Management
-- Employee directory with detailed profiles
-- Attendance tracking (clock in/out)
-- Leave request management with approval workflow
-- Payroll processing with overtime, deductions, and bonuses
-- Department management with budgets
+## Tech Stack
 
-### Accounting
-- Chart of Accounts (Assets, Liabilities, Equity, Revenue, Expense)
-- Invoice creation, sending, and tracking
-- Expense management with category tracking
-- Double-entry journal entries
-- Financial reports (Balance Sheet, Income Statement, Cash Flow)
-
-### PDF Tools
-- Merge, Split, Compress, Rotate, Remove/Extract/Rearrange Pages
-- Images to PDF, PDF to Images, Add Watermark, Page Numbers, Protect PDF
+- **Next.js 16** (App Router, TypeScript)
+- **React 19** + Zustand (state management)
+- **MongoDB** + Mongoose (data storage)
+- **Tailwind CSS 4** (styling)
+- **Recharts** (charts)
+- **Lucide React** (icons)
 
 ## Getting Started
 
 ```bash
+# Install dependencies
 npm install
-npx prisma generate
-npx prisma migrate dev
+
+# Set environment variable
+MONGODB_URI=mongodb://localhost:27017/storageops
+
+# Run development server
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to see the app.
+## Seed Data
 
-## Deploy to Vercel
+POST `/api/seed` to populate the database with realistic sample data covering VMware datastores, Synology volumes, VMs, and alerts.
 
-1. Push to GitHub
-2. Import at [vercel.com](https://vercel.com)
-3. For database, set up [Turso](https://turso.tech) and add `DATABASE_URL` env var
-4. The app works in demo mode without a database
+## Environment Variables
 
-## Tech Stack
-
-Next.js 16 | TypeScript | Tailwind CSS | Prisma | pdf-lib | Zustand
+| Variable | Description |
+|---|---|
+| `MONGODB_URI` | MongoDB connection string |

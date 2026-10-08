@@ -359,17 +359,17 @@ body {
 .dark .border-blue-200 { border-color: #1e40af !important; }
 
 /* ── Module-specific backgrounds ────────────────────────────────────────────── */
-/* POS - Green theme */
-.bg-pos { background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); }
-.dark .bg-pos { background: linear-gradient(135deg, #022c22 0%, #064e3b 100%); }
+/* Datastores - Blue theme */
+.bg-datastores { background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); }
+.dark .bg-datastores { background: linear-gradient(135deg, #172554 0%, #1e3a8a 100%); }
 
-/* HR - Purple theme */
-.bg-hr { background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%); }
-.dark .bg-hr { background: linear-gradient(135deg, #1e0b2e 0%, #3b0764 100%); }
+/* Synology - Purple theme */
+.bg-synology { background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%); }
+.dark .bg-synology { background: linear-gradient(135deg, #1e0b2e 0%, #3b0764 100%); }
 
-/* Accounting - Blue theme */
-.bg-accounting { background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); }
-.dark .bg-accounting { background: linear-gradient(135deg, #172554 0%, #1e3a8a 100%); }
+/* VMs - Emerald theme */
+.bg-vms { background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); }
+.dark .bg-vms { background: linear-gradient(135deg, #022c22 0%, #064e3b 100%); }
 
 /* Dashboard gradient cards */
 .card-gradient {

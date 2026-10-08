@@ -9,8 +9,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "OneApp - All-in-One Business Management",
-  description: "POS, HR Management, Accounting, and PDF Tools in one powerful application",
+  title: "StorageOps — Storage Infrastructure Management",
+  description: "Monitor and manage VMware datastores, Synology NAS volumes, and VM storage in one dashboard",
 };
 
 export default function RootLayout({
@@ -23,7 +23,7 @@ export default function RootLayout({
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{if(JSON.parse(localStorage.getItem('oneapp-theme')||'{}')?.state?.isDark)document.documentElement.classList.add('dark')}catch(e){}`,
+            __html: `try{if(JSON.parse(localStorage.getItem('storageops-theme')||'{}')?.state?.isDark)document.documentElement.classList.add('dark')}catch(e){}`,
           }}
         />
       </head>

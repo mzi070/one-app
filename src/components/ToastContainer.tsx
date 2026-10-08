@@ -1,119 +1,60 @@
 "use client";
 
 import { useEffect } from "react";
-import { CheckCircle, AlertTriangle, AlertCircle, Info, X } from "lucide-react";
-import { useToastStore, type ToastItem } from "@/store";
-import { cn } from "@/lib/utils";
+import { CheckCircle, XCircle, AlertTriangle, Info, X } from "lucide-react";
+import { useToastStore, ToastItem } from "@/store";
 
-const config: Record<
-  ToastItem["type"],
-  { icon: React.ElementType; bar: string; bg: string; border: string; title: string; icon2: string }
-> = {
-  success: {
-    icon: CheckCircle,
-    bar: "bg-emerald-500",
-    bg: "bg-white",
-    border: "border-emerald-200",
-    title: "text-emerald-800 dark:text-emerald-300",
-    icon2: "text-emerald-500",
-  },
-  error: {
-    icon: AlertCircle,
-    bar: "bg-red-500",
-    bg: "bg-white",
-    border: "border-red-200",
-    title: "text-red-800 dark:text-red-300",
-    icon2: "text-red-500",
-  },
-  warning: {
-    icon: AlertTriangle,
-    bar: "bg-amber-400",
-    bg: "bg-white",
-    border: "border-amber-200",
-    title: "text-amber-800 dark:text-amber-300",
-    icon2: "text-amber-500",
-  },
-  info: {
-    icon: Info,
-    bar: "bg-blue-500",
-    bg: "bg-white",
-    border: "border-blue-200",
-    title: "text-blue-800 dark:text-blue-300",
-    icon2: "text-blue-500",
-  },
-};
-
-function Toast({ toast }: { toast: ToastItem }) {
+function ToastCard({ toast }: { toast: ToastItem }) {
   const { removeToast } = useToastStore();
-  const c = config[toast.type];
-  const Icon = c.icon;
 
   useEffect(() => {
-    const t = setTimeout(() => removeToast(toast.id), toast.duration);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => removeToast(toast.id), toast.duration);
+    return () => clearTimeout(timer);
   }, [toast.id, toast.duration, removeToast]);
+
+  const icons = {
+    success: <CheckCircle size={18} className="text-emerald-400" />,
+    error: <XCircle size={18} className="text-red-400" />,
+    warning: <AlertTriangle size={18} className="text-yellow-400" />,
+    info: <Info size={18} className="text-blue-400" />,
+  };
+
+  const borders = {
+    success: "border-l-emerald-500",
+    error: "border-l-red-500",
+    warning: "border-l-yellow-500",
+    info: "border-l-blue-500",
+  };
 
   return (
     <div
-      className={cn(
-        "relative w-85 rounded-2xl border shadow-xl overflow-hidden flex items-start gap-3 p-4 pr-10",
-        c.bg, c.border
-      )}
-      style={{ animation: "fadeInUp 0.25s ease" }}
-      role="alert"
+      className={`flex items-start gap-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 border-l-4 ${borders[toast.type]} rounded-lg shadow-lg p-4 min-w-72 max-w-sm`}
+      style={{ animation: "slideInRight 0.3s ease" }}
     >
-      {/* Left colour bar */}
-      <div className={cn("absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl", c.bar)} />
-
-      {/* Icon */}
-      <div className="shrink-0 mt-0.5">
-        <Icon size={18} className={c.icon2} />
-      </div>
-
-      {/* Text */}
+      <div className="mt-0.5">{icons[toast.type]}</div>
       <div className="flex-1 min-w-0">
-        <p className={cn("text-sm font-semibold leading-snug", c.title)}>{toast.title}</p>
-        {toast.message && (
-          <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{toast.message}</p>
-        )}
+        <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{toast.title}</p>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">{toast.message}</p>
       </div>
-
-      {/* Dismiss */}
       <button
         onClick={() => removeToast(toast.id)}
-        className="absolute top-3 right-3 p-0.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 transition-colors"
+        className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
       >
         <X size={14} />
       </button>
-
-      {/* Progress bar */}
-      <div
-        className={cn("absolute bottom-0 left-0 h-0.5 rounded-full", c.bar)}
-        style={{
-          animation: `shrink ${toast.duration}ms linear forwards`,
-          width: "100%",
-        }}
-      />
     </div>
   );
 }
 
 export default function ToastContainer() {
-  const { toasts } = useToastStore();
+  const toasts = useToastStore((s) => s.toasts);
+
   if (toasts.length === 0) return null;
 
   return (
-    <div className="fixed bottom-6 right-6 z-9999 flex flex-col gap-2.5 items-end pointer-events-none">
-      <style>{`
-        @keyframes shrink {
-          from { width: 100%; }
-          to { width: 0%; }
-        }
-      `}</style>
+    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
       {toasts.map((t) => (
-        <div key={t.id} className="pointer-events-auto">
-          <Toast toast={t} />
-        </div>
+        <ToastCard key={t.id} toast={t} />
       ))}
     </div>
   );

@@ -1,131 +1,100 @@
 "use client";
 
-import { useAppStore, type AppModule } from "@/store";
-import {
-  LayoutDashboard,
-  ShoppingCart,
-  Users,
-  Settings,
-  User,
-  Menu,
-  X,
-  ChevronRight,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
+import { LayoutDashboard, Database, Server, MonitorPlay, Bell, Menu, X, HardDrive } from "lucide-react";
+import { useAppStore, AppModule } from "@/store";
+import ThemeToggle from "./ThemeToggle";
 
-const modules: { id: AppModule; label: string; icon: React.ElementType; color: string; gradient: string }[] = [
-  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, color: "text-blue-400", gradient: "from-blue-500/20 to-blue-600/10" },
-  { id: "pos", label: "Point of Sale", icon: ShoppingCart, color: "text-emerald-400", gradient: "from-emerald-500/20 to-emerald-600/10" },
-  { id: "hr", label: "HR Management", icon: Users, color: "text-violet-400", gradient: "from-violet-500/20 to-violet-600/10" },
-];
-
-const bottomModules: { id: AppModule; label: string; icon: React.ElementType; color: string; gradient: string }[] = [
-  { id: "settings", label: "Settings", icon: Settings, color: "text-gray-400", gradient: "" },
-  { id: "profile", label: "Profile", icon: User, color: "text-pink-400", gradient: "from-pink-500/20 to-pink-600/10" },
+const NAV_ITEMS: { id: AppModule; label: string; icon: React.ReactNode; badge?: string }[] = [
+  { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard size={18} /> },
+  { id: "datastores", label: "VMware Datastores", icon: <Database size={18} /> },
+  { id: "synology", label: "Synology NAS", icon: <Server size={18} /> },
+  { id: "vms", label: "Virtual Machines", icon: <MonitorPlay size={18} /> },
+  { id: "alerts", label: "Alerts", icon: <Bell size={18} /> },
 ];
 
 export default function Sidebar() {
-  const { currentModule, setModule, sidebarOpen, toggleSidebar } = useAppStore();
+  const { currentModule, sidebarOpen, setModule, toggleSidebar } = useAppStore();
 
   return (
     <>
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          className="fixed inset-0 bg-black/40 z-20 lg:hidden"
           onClick={toggleSidebar}
         />
       )}
 
       <aside
-        className={cn(
-          "fixed top-0 left-0 z-50 h-full bg-gray-900 text-white transition-all duration-300 flex flex-col",
-          sidebarOpen ? "w-64" : "w-16",
-          "lg:relative"
-        )}
+        className={`
+          fixed top-0 left-0 h-full z-30 flex flex-col
+          bg-white dark:bg-gray-900
+          border-r border-gray-200 dark:border-gray-800
+          shadow-lg transition-transform duration-300
+          ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
+          lg:translate-x-0 lg:static lg:z-auto lg:shadow-none
+          w-64
+        `}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-700">
-          {sidebarOpen && (
-            <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-              OneApp
-            </h1>
-          )}
+        {/* Logo */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-800">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
+              <HardDrive size={16} className="text-white" />
+            </div>
+            <div>
+              <h1 className="text-sm font-bold text-gray-900 dark:text-white leading-tight">StorageOps</h1>
+              <p className="text-[10px] text-gray-400 leading-tight">Storage Management</p>
+            </div>
+          </div>
           <button
             onClick={toggleSidebar}
-            className="p-1 rounded-md hover:bg-gray-700 transition-colors"
+            className="lg:hidden text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
           >
-            {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
+            <X size={18} />
           </button>
         </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
-          {modules.map((mod) => {
-            const Icon = mod.icon;
-            const isActive = currentModule === mod.id;
+        {/* Nav */}
+        <nav className="flex-1 px-3 py-4 overflow-y-auto space-y-1">
+          {NAV_ITEMS.map((item) => {
+            const active = currentModule === item.id;
             return (
               <button
-                key={mod.id}
-                onClick={() => setModule(mod.id)}
-                className={cn(
-                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group relative",
-                  isActive
-                    ? `bg-gradient-to-r ${mod.gradient} ${mod.color} font-semibold`
-                    : "text-gray-400 hover:bg-gray-800 hover:text-white"
-                )}
-                title={!sidebarOpen ? mod.label : undefined}
+                key={item.id}
+                onClick={() => {
+                  setModule(item.id);
+                  if (window.innerWidth < 1024) toggleSidebar();
+                }}
+                className={`
+                  w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all
+                  ${active
+                    ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-100 dark:border-blue-800/50"
+                    : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-200"
+                  }
+                `}
               >
-                {isActive && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-current rounded-r-full" />
-                )}
-                <Icon
-                  size={20}
-                  className={cn(isActive ? "text-inherit" : "text-gray-400 group-hover:text-gray-300")}
-                />
-                {sidebarOpen && (
-                  <>
-                    <span className="flex-1 text-left text-sm font-medium">
-                      {mod.label}
-                    </span>
-                    {isActive && <ChevronRight size={16} className={mod.color} />}
-                  </>
+                <span className={active ? "text-blue-600 dark:text-blue-400" : ""}>{item.icon}</span>
+                <span className="flex-1 text-left">{item.label}</span>
+                {item.badge && (
+                  <span className="text-[10px] bg-red-500 text-white px-1.5 py-0.5 rounded-full font-semibold">
+                    {item.badge}
+                  </span>
                 )}
               </button>
             );
           })}
         </nav>
 
-        {/* Footer / bottom nav */}
-        <div className="p-2 border-t border-gray-700 space-y-1">
-          {bottomModules.map((mod) => {
-            const Icon = mod.icon;
-            const isActive = currentModule === mod.id;
-            return (
-              <button
-                key={mod.id}
-                onClick={() => setModule(mod.id)}
-                className={cn(
-                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group relative",
-                  isActive
-                    ? `bg-gradient-to-r ${mod.gradient || "bg-gray-700/80"} ${mod.color} font-semibold`
-                    : "text-gray-400 hover:bg-gray-800 hover:text-white"
-                )}
-                title={!sidebarOpen ? mod.label : undefined}
-              >
-                <Icon
-                  size={20}
-                  className={cn(isActive ? "text-white" : "text-gray-400 group-hover:text-gray-300")}
-                />
-                {sidebarOpen && (
-                  <span className="flex-1 text-left text-sm font-medium">{mod.label}</span>
-                )}
-              </button>
-            );
-          })}
-          {sidebarOpen && (
-            <p className="text-xs text-gray-600 text-center pt-2">OneApp v1.0</p>
-          )}
+        {/* Footer */}
+        <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-800 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-white text-[10px] font-bold">
+              SO
+            </div>
+            <span className="text-xs text-gray-500 dark:text-gray-400">Admin</span>
+          </div>
+          <ThemeToggle />
         </div>
       </aside>
     </>

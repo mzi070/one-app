@@ -1,11 +1,5 @@
 import mongoose from "mongoose";
 
-const MONGODB_URI = process.env.MONGODB_URI as string;
-
-if (!MONGODB_URI) {
-  throw new Error("Please define the MONGODB_URI environment variable.");
-}
-
 declare global {
   var _mongoosePromise: Promise<typeof mongoose> | null;
 }
@@ -13,12 +7,13 @@ declare global {
 global._mongoosePromise = global._mongoosePromise ?? null;
 
 export async function connectDB(): Promise<typeof mongoose> {
+  const uri = process.env.MONGODB_URI;
+  if (!uri) throw new Error("Please define the MONGODB_URI environment variable.");
+
   if (mongoose.connection.readyState >= 1) return mongoose;
 
   if (!global._mongoosePromise) {
-    global._mongoosePromise = mongoose.connect(MONGODB_URI, {
-      bufferCommands: false,
-    });
+    global._mongoosePromise = mongoose.connect(uri, { bufferCommands: false });
   }
 
   return global._mongoosePromise;
