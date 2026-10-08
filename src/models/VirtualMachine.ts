@@ -11,9 +11,13 @@ export interface IVirtualMachine extends Document {
   usedDisk: number;
   snapshotCount: number;
   snapshotSize: number;
+  snapshotChainDepth: number;
+  oldestSnapshotDate?: Date | null;
+  lastBackupDate?: Date | null;
   guestOS: string;
   vCPUs: number;
   memoryGB: number;
+  notes: string;
   lastUpdated: Date;
 }
 
@@ -29,9 +33,13 @@ const VirtualMachineSchema = new Schema<IVirtualMachine>(
     usedDisk: { type: Number, default: 0 },
     snapshotCount: { type: Number, default: 0 },
     snapshotSize: { type: Number, default: 0 },
+    snapshotChainDepth: { type: Number, default: 0 },
+    oldestSnapshotDate: { type: Date, default: null },
+    lastBackupDate: { type: Date, default: null },
     guestOS: { type: String, default: "" },
     vCPUs: { type: Number, default: 1 },
     memoryGB: { type: Number, default: 1 },
+    notes: { type: String, default: "" },
     lastUpdated: { type: Date, default: Date.now },
   },
   { timestamps: true }

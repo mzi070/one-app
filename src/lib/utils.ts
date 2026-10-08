@@ -66,3 +66,71 @@ export function timeAgo(date: string | Date): string {
 export function cn(...classes: (string | undefined | null | false)[]): string {
   return classes.filter(Boolean).join(" ");
 }
+
+// Snapshot age helpers
+export function getSnapshotAgeHours(date: string | Date | null | undefined): number {
+  if (!date) return 0;
+  return (Date.now() - new Date(date).getTime()) / (1000 * 60 * 60);
+}
+
+export function getSnapshotAgeBadge(date: string | Date | null | undefined): { color: string; label: string } {
+  const hours = getSnapshotAgeHours(date);
+  if (hours === 0) return { color: "text-gray-400", label: "—" };
+  if (hours < 24) return { color: "text-emerald-600", label: `${Math.floor(hours)}h` };
+  const days = Math.floor(hours / 24);
+  if (hours < 72) return { color: "text-yellow-600", label: `${days}d` };
+  return { color: "text-red-600", label: `${days}d` };
+}
+
+export function isSnapshotStale(date: string | Date | null | undefined): boolean {
+  return getSnapshotAgeHours(date) >= 72;
+}
+
+// Datastore latency helpers (thresholds: <20ms normal, <50ms warning, ≥50ms critical)
+export function getLatencyColor(ms: number): string {
+  if (ms === 0) return "text-gray-400";
+  if (ms < 20) return "text-emerald-600";
+  if (ms < 50) return "text-yellow-600";
+  return "text-red-600";
+}
+
+export function getLatencyLabel(ms: number): string {
+  if (ms === 0) return "—";
+  return `${ms} ms`;
+}
+
+// Over-commitment ratio (provisioned / capacity)
+export function getOvercommitRatio(provisioned: number, capacity: number): number {
+  if (capacity === 0) return 0;
+  return provisioned / capacity;
+}
+
+export function getOvercommitColor(ratio: number): string {
+  if (ratio === 0) return "text-gray-400";
+  if (ratio < 0.8) return "text-emerald-600";
+  if (ratio < 1.0) return "text-yellow-600";
+  return "text-red-600"; // over-committed
+}
+
+export function getOvercommitLabel(ratio: number): string {
+  if (ratio === 0) return "—";
+  return `${(ratio * 100).toFixed(0)}%`;
+}
+
+// Disk SMART status
+export function getSmartColor(status: string): string {
+  switch (status) {
+    case "good": return "bg-emerald-100 text-emerald-700 border-emerald-200";
+    case "warning": return "bg-yellow-100 text-yellow-700 border-yellow-200";
+    case "failed": return "bg-red-100 text-red-700 border-red-200";
+    default: return "bg-gray-100 text-gray-500 border-gray-200";
+  }
+}
+
+// Disk temperature (°C): <45 normal, <55 warning, ≥55 critical
+export function getTempColor(celsius: number): string {
+  if (celsius === 0) return "text-gray-400";
+  if (celsius < 45) return "text-emerald-600";
+  if (celsius < 55) return "text-yellow-600";
+  return "text-red-600";
+}
