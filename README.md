@@ -36,8 +36,26 @@ npm run dev
 
 POST `/api/seed` to populate the database with realistic sample data covering VMware datastores, Synology volumes, VMs, and alerts.
 
+## Live Data Sync
+
+In addition to manual CRUD and the mock seed route, the app can pull real data directly from vCenter and a Synology NAS:
+
+- POST `/api/sync/vmware` — logs into vCenter via the vSphere REST API, fetches VMs and datastores, and upserts them into the `VirtualMachine` and `Datastore` collections (capacity/status alerts are created automatically).
+- POST `/api/sync/synology` — logs into DSM via the Synology Web API, fetches storage volumes and disks, and upserts them into the `SynologyVolume` and `SynologyDisk` collections (capacity/status alerts are created automatically).
+
+Run these on a schedule (e.g. a cron job or serverless scheduled function) to keep the dashboard up to date with live infrastructure.
+
 ## Environment Variables
 
 | Variable | Description |
 |---|---|
 | `MONGODB_URI` | MongoDB connection string |
+| `VCENTER_HOST` | vCenter hostname (used by `/api/sync/vmware`) |
+| `VCENTER_USERNAME` | vCenter login username |
+| `VCENTER_PASSWORD` | vCenter login password |
+| `VCENTER_INSECURE` | `true` to skip TLS verification for self-signed vCenter certs |
+| `SYNOLOGY_HOST` | Synology NAS hostname, optionally with port (used by `/api/sync/synology`) |
+| `SYNOLOGY_USERNAME` | DSM login username |
+| `SYNOLOGY_PASSWORD` | DSM login password |
+| `SYNOLOGY_PROTOCOL` | `http` or `https` (default `https`) |
+| `SYNOLOGY_INSECURE` | `true` to skip TLS verification for self-signed DSM certs |
