@@ -53,9 +53,9 @@ Run these on a schedule (e.g. a cron job or serverless scheduled function) to ke
 | `VCENTER_HOST` | vCenter hostname (used by `/api/sync/vmware`) |
 | `VCENTER_USERNAME` | vCenter login username |
 | `VCENTER_PASSWORD` | vCenter login password |
-| `VCENTER_INSECURE` | `true` to skip TLS verification for self-signed vCenter certs |
 | `SYNOLOGY_HOST` | Synology NAS hostname, optionally with port (used by `/api/sync/synology`) |
 | `SYNOLOGY_USERNAME` | DSM login username |
 | `SYNOLOGY_PASSWORD` | DSM login password |
 | `SYNOLOGY_PROTOCOL` | `http` or `https` (default `https`) |
-| `SYNOLOGY_INSECURE` | `true` to skip TLS verification for self-signed DSM certs |
+
+If vCenter or DSM uses a self-signed certificate, trust it via Node's `NODE_EXTRA_CA_CERTS` environment variable instead of disabling TLS verification.

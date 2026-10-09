@@ -6,7 +6,10 @@
  * - SYNOLOGY_USERNAME
  * - SYNOLOGY_PASSWORD
  * - SYNOLOGY_PROTOCOL   "http" or "https" (default "https")
- * - SYNOLOGY_INSECURE   "true" to skip TLS certificate verification (self-signed certs)
+ *
+ * If DSM uses a self-signed certificate, add its CA certificate to Node's
+ * trust store via the `NODE_EXTRA_CA_CERTS` environment variable rather
+ * than disabling TLS verification.
  *
  * Uses the official SYNO.API.Auth / SYNO.Core.Storage.* Web API endpoints
  * (no external SDK dependency).
@@ -43,7 +46,6 @@ interface SynologyConfig {
   username: string;
   password: string;
   protocol: string;
-  insecure: boolean;
 }
 
 function getConfig(): SynologyConfig {
@@ -62,25 +64,11 @@ function getConfig(): SynologyConfig {
     username,
     password,
     protocol: process.env.SYNOLOGY_PROTOCOL ?? "https",
-    insecure: process.env.SYNOLOGY_INSECURE === "true",
   };
 }
 
 function baseUrl(config: SynologyConfig): string {
   return `${config.protocol}://${config.host}`;
-}
-
-async function withTlsOverride<T>(insecure: boolean, fn: () => Promise<T>): Promise<T> {
-  if (!insecure) return fn();
-
-  const previous = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-  try {
-    return await fn();
-  } finally {
-    if (previous === undefined) delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-    else process.env.NODE_TLS_REJECT_UNAUTHORIZED = previous;
-  }
 }
 
 interface SynoApiResponse<T> {
@@ -214,31 +202,29 @@ function mapDiskRole(disk: DsmDisk): SynologyDiskInfo["role"] {
 export async function fetchSynologyVolumes(): Promise<SynologyVolumeInfo[]> {
   const config = getConfig();
 
-  return withTlsOverride(config.insecure, async () => {
-    const sid = await login(config);
-    try {
-      const data = await entryGet<{ volumes: DsmVolume[] }>(config, sid, {
-        api: "SYNO.Core.Storage.Volume",
-        version: "1",
-        method: "list",
-      });
+  const sid = await login(config);
+  try {
+    const data = await entryGet<{ volumes: DsmVolume[] }>(config, sid, {
+      api: "SYNO.Core.Storage.Volume",
+      version: "1",
+      method: "list",
+    });
 
-      return data.volumes.map((vol): SynologyVolumeInfo => ({
-        nasName: config.host,
-        nasModel: "",
-        volumeName: vol.desc?.trim() || vol.id,
-        volumeType: mapVolumeType(vol.raid_type ?? ""),
-        totalSize: Number(vol.size?.total ?? 0),
-        usedSize: Number(vol.size?.used ?? 0),
-        diskCount: 0,
-        status: mapVolumeStatus(vol.status ?? ""),
-        fileSystem: vol.fs_type ?? "",
-        shares: 0,
-      }));
-    } finally {
-      await logout(config, sid);
-    }
-  });
+    return data.volumes.map((vol): SynologyVolumeInfo => ({
+      nasName: config.host,
+      nasModel: "",
+      volumeName: vol.desc?.trim() || vol.id,
+      volumeType: mapVolumeType(vol.raid_type ?? ""),
+      totalSize: Number(vol.size?.total ?? 0),
+      usedSize: Number(vol.size?.used ?? 0),
+      diskCount: 0,
+      status: mapVolumeStatus(vol.status ?? ""),
+      fileSystem: vol.fs_type ?? "",
+      shares: 0,
+    }));
+  } finally {
+    await logout(config, sid);
+  }
 }
 
 /**
@@ -247,29 +233,27 @@ export async function fetchSynologyVolumes(): Promise<SynologyVolumeInfo[]> {
 export async function fetchSynologyDisks(): Promise<SynologyDiskInfo[]> {
   const config = getConfig();
 
-  return withTlsOverride(config.insecure, async () => {
-    const sid = await login(config);
-    try {
-      const data = await entryGet<{ disks: DsmDisk[] }>(config, sid, {
-        api: "SYNO.Core.Storage.Disk",
-        version: "1",
-        method: "list",
-      });
+  const sid = await login(config);
+  try {
+    const data = await entryGet<{ disks: DsmDisk[] }>(config, sid, {
+      api: "SYNO.Core.Storage.Disk",
+      version: "1",
+      method: "list",
+    });
 
-      return data.disks.map((disk): SynologyDiskInfo => ({
-        nasName: config.host,
-        volumeId: disk.vol_id ?? "",
-        slotId: disk.diskno ?? disk.id,
-        diskModel: disk.model ?? "",
-        serialNumber: disk.serial ?? "",
-        capacityGB: Math.round(Number(disk.size_total ?? 0) / (1024 * 1024 * 1024)),
-        interface: mapDiskInterface(disk.specific_type),
-        role: mapDiskRole(disk),
-        smartStatus: mapSmartStatus(disk.smart_status),
-        temperatureC: disk.temp ?? 0,
-      }));
-    } finally {
-      await logout(config, sid);
-    }
-  });
+    return data.disks.map((disk): SynologyDiskInfo => ({
+      nasName: config.host,
+      volumeId: disk.vol_id ?? "",
+      slotId: disk.diskno ?? disk.id,
+      diskModel: disk.model ?? "",
+      serialNumber: disk.serial ?? "",
+      capacityGB: Math.round(Number(disk.size_total ?? 0) / (1024 * 1024 * 1024)),
+      interface: mapDiskInterface(disk.specific_type),
+      role: mapDiskRole(disk),
+      smartStatus: mapSmartStatus(disk.smart_status),
+      temperatureC: disk.temp ?? 0,
+    }));
+  } finally {
+    await logout(config, sid);
+  }
 }

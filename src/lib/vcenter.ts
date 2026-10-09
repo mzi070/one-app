@@ -5,7 +5,10 @@
  * - VCENTER_HOST       e.g. "vcenter.example.com"
  * - VCENTER_USERNAME
  * - VCENTER_PASSWORD
- * - VCENTER_INSECURE   "true" to skip TLS certificate verification (self-signed certs)
+ *
+ * If vCenter uses a self-signed certificate, add its CA certificate to
+ * Node's trust store via the `NODE_EXTRA_CA_CERTS` environment variable
+ * rather than disabling TLS verification.
  *
  * Only uses the vSphere Automation REST API (no external SDK dependency).
  */
@@ -45,7 +48,6 @@ interface VCenterConfig {
   host: string;
   username: string;
   password: string;
-  insecure: boolean;
 }
 
 function getConfig(): VCenterConfig {
@@ -59,33 +61,11 @@ function getConfig(): VCenterConfig {
     );
   }
 
-  return {
-    host,
-    username,
-    password,
-    insecure: process.env.VCENTER_INSECURE === "true",
-  };
+  return { host, username, password };
 }
 
 function baseUrl(config: VCenterConfig): string {
   return `https://${config.host}`;
-}
-
-/**
- * Temporarily disables TLS certificate verification for self-signed vCenter
- * certificates, scoped to the duration of the provided async function.
- */
-async function withTlsOverride<T>(insecure: boolean, fn: () => Promise<T>): Promise<T> {
-  if (!insecure) return fn();
-
-  const previous = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-  try {
-    return await fn();
-  } finally {
-    if (previous === undefined) delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-    else process.env.NODE_TLS_REJECT_UNAUTHORIZED = previous;
-  }
 }
 
 async function login(config: VCenterConfig): Promise<string> {
@@ -167,56 +147,54 @@ function mapPowerState(state: VCenterVmSummary["power_state"]): VCenterVM["power
 export async function fetchVCenterVMs(): Promise<VCenterVM[]> {
   const config = getConfig();
 
-  return withTlsOverride(config.insecure, async () => {
-    const sessionId = await login(config);
-    try {
-      const vms = await apiGet<VCenterVmSummary[]>(config, sessionId, "/api/vcenter/vm");
+  const sessionId = await login(config);
+  try {
+    const vms = await apiGet<VCenterVmSummary[]>(config, sessionId, "/api/vcenter/vm");
 
-      const results: VCenterVM[] = [];
-      for (const vm of vms) {
-        const [detail, snapshots] = await Promise.all([
-          apiGet<VCenterVmDetail>(config, sessionId, `/api/vcenter/vm/${vm.vm}`).catch(
-            () => ({} as VCenterVmDetail)
-          ),
-          apiGet<{ snapshots?: Record<string, { create_time?: string }> }>(
-            config,
-            sessionId,
-            `/api/vcenter/vm/${vm.vm}/snapshot`
-          ).catch(() => ({ snapshots: {} as Record<string, { create_time?: string }> })),
-        ]);
+    const results: VCenterVM[] = [];
+    for (const vm of vms) {
+      const [detail, snapshots] = await Promise.all([
+        apiGet<VCenterVmDetail>(config, sessionId, `/api/vcenter/vm/${vm.vm}`).catch(
+          () => ({} as VCenterVmDetail)
+        ),
+        apiGet<{ snapshots?: Record<string, { create_time?: string }> }>(
+          config,
+          sessionId,
+          `/api/vcenter/vm/${vm.vm}/snapshot`
+        ).catch(() => ({ snapshots: {} as Record<string, { create_time?: string }> })),
+      ]);
 
-        const disks = Object.values(detail.disks ?? {});
-        const provisionedDisk = disks.reduce((sum, d) => sum + (d.capacity ?? 0), 0);
-        const snapshotEntries = Object.values(snapshots.snapshots ?? {});
-        const oldestSnapshotDate = snapshotEntries
-          .map((s) => (s.create_time ? new Date(s.create_time) : null))
-          .filter((d): d is Date => d !== null)
-          .sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
+      const disks = Object.values(detail.disks ?? {});
+      const provisionedDisk = disks.reduce((sum, d) => sum + (d.capacity ?? 0), 0);
+      const snapshotEntries = Object.values(snapshots.snapshots ?? {});
+      const oldestSnapshotDate = snapshotEntries
+        .map((s) => (s.create_time ? new Date(s.create_time) : null))
+        .filter((d): d is Date => d !== null)
+        .sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
 
-        results.push({
-          vmName: vm.name,
-          powerState: mapPowerState(vm.power_state),
-          datacenter: "",
-          cluster: "",
-          host: "",
-          datastore: "",
-          provisionedDisk,
-          usedDisk: 0,
-          snapshotCount: snapshotEntries.length,
-          snapshotSize: 0,
-          snapshotChainDepth: snapshotEntries.length,
-          oldestSnapshotDate,
-          guestOS: detail.guest_OS ?? "",
-          vCPUs: detail.cpu?.count ?? vm.cpu_count ?? 1,
-          memoryGB: Math.round(((detail.memory?.size_MiB ?? vm.memory_size_MiB ?? 1024) / 1024) * 100) / 100,
-        });
-      }
-
-      return results;
-    } finally {
-      await logout(config, sessionId);
+      results.push({
+        vmName: vm.name,
+        powerState: mapPowerState(vm.power_state),
+        datacenter: "",
+        cluster: "",
+        host: "",
+        datastore: "",
+        provisionedDisk,
+        usedDisk: 0,
+        snapshotCount: snapshotEntries.length,
+        snapshotSize: 0,
+        snapshotChainDepth: snapshotEntries.length,
+        oldestSnapshotDate,
+        guestOS: detail.guest_OS ?? "",
+        vCPUs: detail.cpu?.count ?? vm.cpu_count ?? 1,
+        memoryGB: Math.round(((detail.memory?.size_MiB ?? vm.memory_size_MiB ?? 1024) / 1024) * 100) / 100,
+      });
     }
-  });
+
+    return results;
+  } finally {
+    await logout(config, sessionId);
+  }
 }
 
 /**
@@ -225,38 +203,36 @@ export async function fetchVCenterVMs(): Promise<VCenterVM[]> {
 export async function fetchVCenterDatastores(): Promise<VCenterDatastore[]> {
   const config = getConfig();
 
-  return withTlsOverride(config.insecure, async () => {
-    const sessionId = await login(config);
-    try {
-      const datastores = await apiGet<VCenterDatastoreSummary[]>(
-        config,
-        sessionId,
-        "/api/vcenter/datastore"
-      );
+  const sessionId = await login(config);
+  try {
+    const datastores = await apiGet<VCenterDatastoreSummary[]>(
+      config,
+      sessionId,
+      "/api/vcenter/datastore"
+    );
 
-      return datastores.map((ds): VCenterDatastore => {
-        const usedSpace = Math.max(ds.capacity - ds.free_space, 0);
-        const usedPct = ds.capacity > 0 ? usedSpace / ds.capacity : 0;
-        const status: VCenterDatastore["status"] =
-          usedPct >= 0.9 ? "critical" : usedPct >= 0.8 ? "warning" : "normal";
+    return datastores.map((ds): VCenterDatastore => {
+      const usedSpace = Math.max(ds.capacity - ds.free_space, 0);
+      const usedPct = ds.capacity > 0 ? usedSpace / ds.capacity : 0;
+      const status: VCenterDatastore["status"] =
+        usedPct >= 0.9 ? "critical" : usedPct >= 0.8 ? "warning" : "normal";
 
-        return {
-          name: ds.name,
-          type: mapDatastoreType(ds.type),
-          datacenter: "",
-          cluster: "",
-          capacity: ds.capacity,
-          usedSpace,
-          provisionedSpace: usedSpace,
-          connectedVMs: 0,
-          status,
-          datastoreUrl: ds.datastore,
-        };
-      });
-    } finally {
-      await logout(config, sessionId);
-    }
-  });
+      return {
+        name: ds.name,
+        type: mapDatastoreType(ds.type),
+        datacenter: "",
+        cluster: "",
+        capacity: ds.capacity,
+        usedSpace,
+        provisionedSpace: usedSpace,
+        connectedVMs: 0,
+        status,
+        datastoreUrl: ds.datastore,
+      };
+    });
+  } finally {
+    await logout(config, sessionId);
+  }
 }
 
 export { GB as VCENTER_GB };
